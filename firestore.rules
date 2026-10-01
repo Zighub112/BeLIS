@@ -1,0 +1,22 @@
+rules_version = '2';
+// BeLIS – Zugriffsregeln
+// Nur die aufgeführten Konten dürfen lesen und schreiben.
+// Neue Führungskräfte: in BeLIS › Benutzerverwaltung › „Zugriffsregeln erzeugen“.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function berechtigt() {
+      return request.auth != null
+        && request.auth.token.email in [
+          'richter@belis-22d63.firebaseapp.com',
+          'lehmann@belis-22d63.firebaseapp.com',
+          'ottermann@belis-22d63.firebaseapp.com'
+        ];
+    }
+    match /belis/{dok} {
+      allow read, write: if berechtigt();
+    }
+    match /{rest=**} {
+      allow read, write: if false;
+    }
+  }
+}
