@@ -297,7 +297,7 @@ table.dp{border-collapse:collapse;min-width:760px;width:100%;background:var(--fi
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.3.3 (Build 26.10.01)</div>
+    <div class="hm">BeLIS 5.3.4 (Build 26.10.01)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -1025,7 +1025,7 @@ V.antraege={t:'Anträge',neuLabel:'Antrag stellen',neu(){pickPerson('Antrag stel
   grid('antraege',[{l:'Az.',f:r=>esc(r.az),mono:1},{l:'Datum',f:r=>fmtD(r.datum),s:r=>r.datum+r.az},{l:'Antragsteller/in',f:r=>esc(pname(r.von,1))},{l:'Maßnahme',f:r=>esc(r.art)},{l:'Betroffene/r',f:r=>esc(pname(r.pid,1))},{l:'Inhalt',f:r=>esc(r.summary)},{l:'Status',f:r=>stBadge(r.status)},{l:'Entscheidung',f:r=>esc(r.entscheidung||'')}],rows,'Keine Anträge in diesem Status.')},
  edit(id){const a=S.antraege.find(x=>x.id===id);
   openDlg({title:'Antrag '+a.az,body:`<dl class="kv"><dt>Antrag vom</dt><dd>${fmtD(a.datum)}</dd><dt>Antragsteller/in</dt><dd>${esc(pname(a.von,1))} (${esc(wbOf((person(a.von)||{}).dienststelle))})</dd><dt>Maßnahme</dt><dd><b>${esc(a.art)}</b> – ${esc(a.summary)}</dd><dt>Betroffene/r</dt><dd>${esc(pname(a.pid,1))}, ${esc((person(a.pid)||{}).dienststelle||'')}</dd><dt>Wirksam ab</dt><dd>${fmtD(a.params.datum)}</dd>${a.params.betreff?`<dt>Betreff</dt><dd>${esc(a.params.betreff)}</dd>`:''}<dt>Begründung</dt><dd style="white-space:pre-wrap">${esc(a.begr)}</dd><dt>Status</dt><dd>${stBadge(a.status)}</dd>${a.entscheidung?`<dt>Entscheidung</dt><dd>${esc(a.entscheidung)} (${esc(a.entschVon||'')}, ${fmtD(a.entschDatum)})</dd>`:''}</dl>`,
-   left:[{label:'Antrag drucken',close:false,fn:()=>printDoc(docAntrag(a),'Antrag '+a.az)},...(a.status==='offen'?(isBL()?[{label:'Genehmigen',fn:()=>{setTimeout(()=>antragGenehmigen(a),10)}},{label:'Ablehnen',fn:()=>{setTimeout(()=>antragAblehnen(a),10)}}]:(a.von===USER.pid?[{label:'Zurückziehen',fn:()=>{a.status='zurückgezogen';save('antraege');log('Antrag zurückgezogen',a.az);render()}}]:[])):[])],
+   left:[{label:'Antrag drucken',close:false,fn:()=>printDoc(docAntrag(a),'Antrag '+a.az)},...(a.status==='genehmigt'||a.status==='abgelehnt'?[{label:'Bescheid drucken',close:false,fn:()=>printDoc(docAntragBescheid(a),'Bescheid zu Antrag '+a.az)}]:[]),...(a.status==='offen'?(isBL()?[{label:'Genehmigen',fn:()=>{setTimeout(()=>antragGenehmigen(a),10)}},{label:'Ablehnen',fn:()=>{setTimeout(()=>antragAblehnen(a),10)}}]:(a.von===USER.pid?[{label:'Zurückziehen',fn:()=>{a.status='zurückgezogen';save('antraege');log('Antrag zurückgezogen',a.az);render()}}]:[])):[])],
    buttons:[{label:'Schließen',pri:true}]})},
  extra:[{l:'Genehmigen',ic:'check',sel:1,bl:1,fn:id=>antragGenehmigen(S.antraege.find(x=>x.id===id))},{l:'Ablehnen',ic:'del',sel:1,bl:1,fn:id=>antragAblehnen(S.antraege.find(x=>x.id===id))}]
 };
@@ -1040,8 +1040,9 @@ function antragGenehmigen(a){
   else if(a.art==='Vorläufige Dienstenthebung')m=doStatus(a.pid,'suspendiert',pr.datum,(pr.text||'')+zus);
   else if(a.art==='Aufhebung der Dienstenthebung')m=doStatus(a.pid,'aktiv',pr.datum,(pr.text||'')+zus);
   else if(a.art==='Beurlaubung')m=doStatus(a.pid,'beurlaubt',pr.datum,(pr.text||'')+zus);
-  a.status='genehmigt';a.entscheidung='genehmigt';a.entschVon=USER.name;a.entschDatum=today();save('antraege');log('Antrag genehmigt',a.az);render();
+  a.status='genehmigt';a.entscheidung='genehmigt';a.entschVon=USER.name;a.entschKennung=USER.kennung;a.entschDatum=today();save('antraege');log('Antrag genehmigt',a.az);render();
   if(m)setTimeout(()=>printMassnahme(m),50);
+  else setTimeout(()=>printDoc(docAntragBescheid(a),'Bescheid zu Antrag '+a.az),50);
  },'Genehmigen');
 }
 const ANTR_ARTEN=['Beförderung','Versetzung','Beurlaubung','Vorläufige Dienstenthebung','Aufhebung der Dienstenthebung','Entlassung','Sonstiger Antrag'];
@@ -1079,7 +1080,7 @@ function antragNeu(pid,art){
 function antragAblehnen(a){
  if(a.status!=='offen'){toast('Über diesen Antrag wurde bereits entschieden.',true);return}
  const F=[{k:'grund',l:'Begründung der Ablehnung',t:'textarea',req:1,rows:4}];
- openDlg({title:'Antrag '+a.az+' ablehnen',size:'small',body:formHtml(F,{}),buttons:[{label:'Ablehnen',pri:true,fn:d=>{const o=readForm(d,F);if(!o)return false;a.status='abgelehnt';a.entscheidung='abgelehnt: '+o.grund;a.entschVon=USER.name;a.entschDatum=today();save('antraege');log('Antrag abgelehnt',a.az);render()}},{label:'Abbrechen'}]});
+ openDlg({title:'Antrag '+a.az+' ablehnen',size:'small',body:formHtml(F,{}),buttons:[{label:'Ablehnen',pri:true,fn:d=>{const o=readForm(d,F);if(!o)return false;a.status='abgelehnt';a.entscheidung='abgelehnt: '+o.grund;a.ablehnGrund=o.grund;a.entschVon=USER.name;a.entschKennung=USER.kennung;a.entschDatum=today();save('antraege');log('Antrag abgelehnt',a.az);render();setTimeout(()=>printDoc(docAntragBescheid(a),'Bescheid zu Antrag '+a.az),50)}},{label:'Abbrechen'}]});
 }
 
 /* ================= Personal ================= */
@@ -1616,6 +1617,15 @@ function docAntrag(a){const p=person(a.pid)||{nachname:'?',vorname:'',dg:'',dnr:
  <div style="font-weight:700;margin-top:5mm">Begründung</div>${para(a.begr)}
  <div class="sig">${esc(v.nachname)}, ${esc(v.dg)}</div>
  <div style="margin-top:12mm;border:1px solid #888;padding:3mm 4mm;font-size:10pt"><b>Entscheidung der Behördenleitung</b><br>${a.status==='offen'?'☐ genehmigt &nbsp;&nbsp; ☐ abgelehnt<br><br>Datum, Unterschrift: ______________________':`${a.status==='genehmigt'?'☒ genehmigt':'☐ genehmigt'} &nbsp;&nbsp; ${a.status==='abgelehnt'?'☒ abgelehnt':'☐ abgelehnt'}${a.entscheidung&&a.status==='abgelehnt'?'<br>'+esc(a.entscheidung.replace(/^abgelehnt: /,'Begründung: ')):''}<br>${esc(a.entschVon||'')}, ${fmtD(a.entschDatum)}`}</div>${fuss()}</div>`}
+/* Bescheid an die antragstellende Führungskraft (Genehmigung ohne Personalmaßnahme bzw. Ablehnung) */
+function docAntragBescheid(a){const p=person(a.pid)||{nachname:'?',vorname:'',dg:'',dnr:'',dienststelle:'',anrede:''};const v=person(a.von)||{nachname:'?',vorname:'',dg:'',dienststelle:'',anrede:''};
+ const gen=a.status==='genehmigt';const was=a.art==='Sonstiger Antrag'?(a.params.betreff||'Sonstiger Antrag'):a.art+(a.summary?' ('+a.summary+')':'');
+ const body=`${sgh(v)}<p>auf Ihren Antrag vom <b>${fmtD(a.datum)}</b> (Az. ${esc(a.az)}) betreffend <b>${esc(was)}</b> für ${esc(amtG(p.dg,p.anrede))} <b>${esc(p.vorname)} ${esc(p.nachname)}</b>${p.dnr?' ('+esc(p.dnr)+')':''}, ${esc(p.dienststelle)}, ergeht folgende Entscheidung:</p>
+ <p style="margin-left:8mm;font-size:12pt"><b>${gen?'Dem Antrag wird stattgegeben.':'Der Antrag wird abgelehnt.'}</b></p>
+ ${gen?`<p>Die Entscheidung gilt mit Wirkung vom <b>${fmtD(a.params.datum||a.entschDatum)}</b>.${a.art==='Sonstiger Antrag'?' Eine Personalmaßnahme ist damit nicht verbunden.':''}</p>`:`<p class="dh">Gründe:</p>${para(a.ablehnGrund||String(a.entscheidung||'').replace(/^abgelehnt:\s*/,''))}`}
+ <p class="dh">Begründung des Antrages:</p>${para(a.begr)}
+ <p>${gen?'Ich bitte Sie, die betroffene Person entsprechend in Kenntnis zu setzen.':'Ich bitte Sie, die betroffene Person über die Entscheidung in Kenntnis zu setzen.'}</p>`;
+ return brief({an:`${v.anrede==='Herr'?'Herrn':v.anrede==='Frau'?'Frau':''}<br><b>${esc(v.vorname)} ${esc(v.nachname)}</b><br>${esc(amtG(v.dg,v.anrede))}<br>${esc(wbOf(v.dienststelle))}`,az:a.az,betreff:'Entscheidung über Ihren Antrag – '+was,body,datum:a.entschDatum,signKennung:a.entschKennung||(USER&&USER.kennung)})}
 function docListe(title,sub,head,rows){return `<div class="paper">${kopf()}<div class="dtitel">${esc(title)}</div><div style="font-size:9pt;color:#444;margin:-3mm 0 4mm">${esc(sub)}</div><table class="t"><thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${head.length}">Keine Einträge.</td></tr>`}</tbody></table><div style="font-size:8.5pt;margin-top:4mm">Nur für den Dienstgebrauch.</div>${fuss()}</div>`}
 function docPersonalbogen(p){const r=rank(p.dg);const ms=S.massnahmen.filter(m=>m.pid===p.id).sort((a,b)=>a.datum<b.datum?-1:1);
  const row=(a,b)=>`<tr><th style="width:45mm">${esc(a)}</th><td>${b}</td></tr>`;
@@ -1676,7 +1686,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste drucken</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.3.3 (Build 26.10.01)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.3.4 (Build 26.10.01)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 (function init(){
