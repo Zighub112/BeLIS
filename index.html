@@ -297,7 +297,7 @@ table.dp{border-collapse:collapse;min-width:760px;width:100%;background:var(--fi
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.3.5 (Build 26.10.01)</div>
+    <div class="hm">BeLIS 5.3.6 (Build 26.10.01)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -423,7 +423,7 @@ const csv=t=>String(t||'').split(',').map(s=>s.trim()).filter(Boolean);
 
 function defaultMeta(typ){
  const p=PRESETS[typ]||PRESETS.Polizei;
- return {ver:8,typ,daZeichnung:'Die Kommissariatsleitung',slogan:'bürgerorientiert • professionell • rechtsstaatlich',kennzeichnung:'Weder dieses Dokument noch die darin genannten Personen, Organisationen oder sonstigen Entitäten stehen in Verbindung zu real existierenden Personen, Behörden, Unternehmen oder Institutionen.',urkFormel1:'im Namen der Landesregierung\ndes Landes Nordrhein-Westfalen',urkFormel2:'Für das Ministerium des Innern\nDas Polizeipräsidium Reuth',urkOrt:'Reuth',urkBV:'Widerruf', behoerde:typ==='Feuerwehr'?'Feuerwehr Reuth':'Polizeipräsidium Reuth – Innenstadt-Ost',
+ return {ver:9,typ,daZeichnung:'Die Kommissariatsleitung',slogan:'bürgerorientiert • professionell • rechtsstaatlich',kennzeichnung:'Weder dieses Dokument noch die darin genannten Personen, Organisationen oder sonstigen Entitäten stehen in Verbindung zu real existierenden Personen, Behörden, Unternehmen oder Institutionen.',urkFormel1:'im Namen der Landesregierung\ndes Landes Nordrhein-Westfalen',urkFormel2:'Für das Ministerium des Innern\nDas Polizeipräsidium Reuth',urkOrt:'Reuth',urkBV:'Widerruf', behoerde:typ==='Feuerwehr'?'Feuerwehr Reuth':'Polizeipräsidium Reuth – Innenstadt-Ost',
   traeger:'Ministerium für Inneres und Sport',
   anschrift:typ==='Feuerwehr'?'Feuerwehr Reuth':'Polizeipräsidium Reuth · Innenstadt-Ost · Reuth',
   leitung:typ==='Feuerwehr'?'Oberbranddirektor/in':'Dr. Christian Richter, Polizeipräsident',
@@ -573,6 +573,20 @@ function normalize(){
   S.bewerbungen.forEach(x=>{x.ziel=m(x.ziel);x.bisher=m(x.bisher)});
   S.meta.ver=8;ch=true;
  }
+ if(ver<9){
+  /* Stammdaten und Beförderungsverlauf der Leitung laut Personalstelle */
+  const set=(nn,o)=>{const x=S.personal.find(p=>p.nachname===nn);if(x)Object.assign(x,o);return x};
+  const L=set('Lehmann',{titel:'Dr. jur.',vorname:'Paul',anrede:'Herr',dg:'PVP',befoerdert:'2026-09-27'});
+  const R0=set('Richter',{titel:'Dr. iur.',vorname:'Christian',anrede:'Herr',dg:'PP',befoerdert:'2026-09-18'});
+  const O=set('Ottermann',{vorname:'Travis',anrede:'Herr',dg:'LPD B3',befoerdert:'2026-09-27'});
+  const add=(x,von,nach,datum,user)=>{if(!x||S.massnahmen.some(m=>m.pid===x.id&&m.art==='Beförderung'&&m.nach===nach&&m.datum===datum))return;
+   const n=S.massnahmen.filter(m=>m.az&&/^P 1-/.test(m.az)).length;S.meta.counters['P2026']=Math.max(S.meta.counters['P2026']||0,n)+1;
+   S.massnahmen.push({id:uid(),az:'P 1-'+String(S.meta.counters['P2026']).padStart(4,'0')+'/26',art:'Beförderung',pid:x.id,von,nach,datum,text:'Beförderung (Nacherfassung)',user:user||''})};
+  add(R0,'LPD','PP','2026-09-18','');add(O,'PR','POR','2026-09-23','RICHTER');add(O,'POR','LPD B3','2026-09-27','RICHTER');add(L,'PD','PVP','2026-09-27','RICHTER');
+  S.massnahmen.sort((a,b)=>a.datum<b.datum?-1:a.datum>b.datum?1:0);
+  S.org.forEach(o=>{if(o.inhaber==='Paul Lehmann')o.inhaber='Dr. jur. Paul Lehmann';if(o.inhaber==='Dr. Christian Richter')o.inhaber='Dr. iur. Christian Richter';if(o.inhaber==='T. Ottermann')o.inhaber='Travis Ottermann'});
+  S.meta.ver=9;ch=true;
+ }
  /* Korrektur: Vorname = Nachname (z. B. „Lehmann Lehmann“) */
  S.personal.forEach(x=>{if(x.vorname&&x.vorname.trim().toLowerCase()===String(x.nachname).trim().toLowerCase()){x.vorname=x.nachname==='Lehmann'?'Paul':'';ch=true}});
  if(ver<2){
@@ -643,12 +657,13 @@ function orgStatus(o){return o.inhaber?'besetzt':(o.status==='n. b.'?'n. b.':'va
 function seedReuth(silent){
  S=emptyState();const m=S.meta;m.lehmannInit=true;const t=today();
  const P=[['Richter','Christian','PP','Behördenleitung','Behördenleitung (Polizeipräsident)',{}],
-  ['Lehmann','Paul','PVP','Behördenleitung','Stellvertretende Behördenleitung (Polizeivizepräsident)',{setup:true}],
-  ['Ottermann','T.','LPD B3','Wachbezirksleitung','Leitung Wachbezirk Innenstadt-Ost',{}]];
+  ['Lehmann','Paul','PVP','Behördenleitung','Stellvertretende Behördenleitung (Polizeivizepräsident)',{}],
+  ['Ottermann','Travis','LPD B3','Wachbezirksleitung','Leitung Wachbezirk Innenstadt-Ost',{}]];
  P.forEach((r,i)=>S.personal.push({id:uid()+i,anrede:'Herr',dnr:String(m.dnrNext++),nachname:r[0],vorname:r[1],dg:r[2],dienststelle:r[3],funktion:r[4],eintritt:'',befoerdert:'',status:'aktiv',geb:'',rufname:'',kontakt:'',quals:[],vermerke:[],acc:r[5]}));
  ORG_REUTH.forEach((o,i)=>S.org.push({id:uid()+'o'+i,abt:o[0],funktion:o[1],inhaber:o[2],lg:o[3],status:o[4]||'',sort:i}));
  seedSchriftgut();
  seedDAs();const bf=S.schriftgut.find(s=>s.titel==='Beförderungen im höheren Dienst');if(bf)bf.status='Entwurf';
+ S.meta.ver=8;normalize();
  if(!silent)log('Organisationsstand eingespielt',m.behoerde);
  KEYS.forEach(k=>Store.push(k));Store.saveLocal();
 }
@@ -980,7 +995,7 @@ V.cockpit={t:'Übersicht',
    ${wv.length?`<ul class="wv">${wv.slice(0,12).map(w=>`<li><span class="d" style="${w.d<t?'color:var(--err);font-weight:600':w.d===t?'color:var(--warn);font-weight:600':''}">${fmtD(w.d)}</span><a data-act="gowv" data-id="${w.go}|${w.id}">${esc(w.t)}</a></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Keine Wiedervorlagen fällig.</div>'}
   </fieldset>
   <fieldset><legend>Führung der Behörde</legend>
-   <ul class="wv">${fk.map(p=>`<li><span style="width:52px;flex:none;font-weight:600">${esc(p.dg)}</span><span>${esc(p.nachname)}${p.vorname?', '+esc(p.vorname):''}${p.id===USER.pid?' <span style="color:var(--tx3)">(Sie)</span>':''}</span><span style="margin-left:auto;color:var(--tx2);text-align:right">${rolleOf(p)==='Behördenleitung'?'Behördenleitung':esc(wbOf(p.dienststelle))}${p.status!=='aktiv'?' '+stBadge(p.status):''}</span></li>`).join('')||'<li style="color:var(--tx3)">Keine Führungskräfte erfasst.</li>'}</ul>
+   <ul class="wv">${fk.map(p=>`<li><span style="width:52px;flex:none;font-weight:600">${esc(p.dg)}</span><span>${esc(p.nachname)}${p.vorname?', '+esc(p.vorname):''}${p.titel?', '+esc(p.titel):''}${p.id===USER.pid?' <span style="color:var(--tx3)">(Sie)</span>':''}</span><span style="margin-left:auto;color:var(--tx2);text-align:right">${rolleOf(p)==='Behördenleitung'?'Behördenleitung':esc(wbOf(p.dienststelle))}${p.status!=='aktiv'?' '+stBadge(p.status):''}</span></li>`).join('')||'<li style="color:var(--tx3)">Keine Führungskräfte erfasst.</li>'}</ul>
   </fieldset>
   <fieldset><legend>Letzte Personalmaßnahmen</legend>
    ${last.length?`<ul class="wv">${last.map(m=>`<li><span class="d">${fmtD(m.datum)}</span><span>${esc(m.art)}: ${esc(pname(m.pid,1))}${m.nach&&m.art!=='Versetzung'?' → '+esc(m.nach):''}${m.art==='Versetzung'?' → '+esc(m.nach):''}</span><a style="margin-left:auto;white-space:nowrap" data-act="akte" data-id="${m.pid}">Akte</a></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Noch keine Maßnahmen verfügt.</div>'}
@@ -1088,7 +1103,7 @@ const PSTATUS=['aktiv','beurlaubt','krank gemeldet','suspendiert','ausgeschieden
 const rankOpts=list=>list.map(r=>({v:r.k,l:r.k+' – '+r.n+' ('+r.bes+')'}));
 const PF=()=>[
  {t:'sep',l:'Personalien'},
- {k:'anrede',l:'Anrede',t:'select',o:['Herr','Frau'],empty:'(ohne)'},{k:'nachname',l:'Name',req:1},{k:'vorname',l:'Vorname',req:1},{k:'geb',l:'Geburtsdatum',t:'date'},
+ {k:'anrede',l:'Anrede',t:'select',o:['Herr','Frau'],empty:'(ohne)'},{k:'titel',l:'Akademischer Grad',ph:'z. B. Dr. jur.'},{k:'nachname',l:'Name',req:1},{k:'vorname',l:'Vorname',req:1},{k:'geb',l:'Geburtsdatum',t:'date'},
  {t:'sep',l:'Dienstverhältnis'},
  {k:'dnr',l:'Dienstnummer',ro:1},
  {k:'dg',l:'Amtsbezeichnung',t:'select',req:1,ro:1,o:()=>rankOpts(R())},
@@ -1245,7 +1260,7 @@ V.personal={t:'Personalverzeichnis',count:()=>S.personal.filter(p=>p.status!=='a
   grid('personal',[
    {l:'Personalnr.',f:r=>esc(r.dnr),mono:1,s:r=>r.dnr.replace(/\d+/,m=>m.padStart(6,'0'))},
    {l:'Name',f:r=>'<b>'+esc(r.nachname)+'</b>',s:r=>r.nachname},
-   {l:'Vorname',f:r=>esc(r.vorname)},
+   {l:'Vorname',f:r=>esc(r.vorname)+(r.titel?` <span style="color:var(--tx3)">${esc(r.titel)}</span>`:'')},
    {l:'Amt',f:r=>esc(r.dg),s:r=>String(rankIdx(r.dg)+10).padStart(3,'0')},
    {l:'Bes.',f:r=>esc(rank(r.dg).bes)},
    {l:'Abteilung',f:r=>esc(r.dienststelle)},
@@ -1538,11 +1553,13 @@ const IMG_WAPPEN='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPMAAAEDCAYAAADg
 function kopf(){return `<div class="prep"><img src="${IMG_KOPF}" alt=""></div><div class="dhead"><div class="dlogo"><img src="${IMG_KOPF}" alt="Polizei Nordrhein-Westfalen – Reuth Innenstadt-Ost"></div><div class="dbar">${esc(S.meta.slogan||'')}</div></div>`}
 function fuss(){return `<div class="dfuss">${esc(S.meta.kennzeichnung||'')}</div><div class="pfuss">${esc(S.meta.kennzeichnung||'')}</div>`}
 function signer(kennung){const k=(kennung||(USER&&USER.kennung)||'').toUpperCase();return S.personal.find(p=>p.nachname.toUpperCase()===k)||(USER?person(USER.pid):null)}
-function zeichnung(p){if(!p)return {vz:'',name:'',fkt:''};const bl=csv(S.meta.rollenBL);const leiter=bl[0]===p.dg;const vz=rolleOf(p)==='Behördenleitung'?(leiter?'':'In Vertretung'):'Im Auftrag';const vn=p.vorname&&p.vorname.toLowerCase()!==p.nachname.toLowerCase()?p.vorname:'';return {vz,name:(vn?vn+' ':'')+p.nachname,fkt:amtG(p.dg,p.anrede)}}
+function zeichnung(p){if(!p)return {vz:'',name:'',fkt:''};const bl=csv(S.meta.rollenBL);const leiter=bl[0]===p.dg;const vz=rolleOf(p)==='Behördenleitung'?(leiter?'':'In Vertretung'):'Im Auftrag';const vn=p.vorname&&p.vorname.toLowerCase()!==p.nachname.toLowerCase()?p.vorname:'';return {vz,name:[p.titel,vn,p.nachname].filter(Boolean).join(' '),fkt:amtG(p.dg,p.anrede)}}
 function amtG(k,anrede){let n=rank(k).n;if(anrede==='Herr')n=n.replace('Erste/r','Erster').replace('Leitende/r','Leitender').replace(/\/-[^\s/]+/,'').replace('/in','');else if(anrede==='Frau')n=n.replace('Erste/r','Erste').replace('Leitende/r','Leitende').replace(/rat\/-r(\S+)/,(m,x)=>'r'+x).replace('/in','in');return n}
 const zumZur=a=>a==='Herr'?'zum':a==='Frau'?'zur':'zur/zum';
 const besGr=k=>{const b=rank(k).bes;if(!b||/anw/i.test(b))return '';return `(BesGr.${b.replace(/^A\s*/,'').replace(/\s+/g,'')})`};
-function sgh(p){const n=esc(p.nachname);return `<p class="dsal">${p.anrede==='Herr'?'Sehr geehrter Herr '+n:p.anrede==='Frau'?'Sehr geehrte Frau '+n:'Guten Tag '+esc(p.vorname)+' '+n},</p>`}
+function sgh(p){const n=esc(p.nachname);return `<p class="dsal">${p.anrede==='Herr'?'Sehr geehrter Herr '+esc(drAnrede(p))+n:p.anrede==='Frau'?'Sehr geehrte Frau '+esc(drAnrede(p))+n:'Guten Tag '+esc(vollName(p))},</p>`}
+const vollName=p=>[p.titel,p.vorname,p.nachname].filter(Boolean).join(' ');
+const drAnrede=p=>(p.titel&&/^(Prof\.\s*)?Dr/.test(p.titel))?p.titel.replace(/^(Prof\.\s*)?(Dr\.)(\s*\w+\.)*.*$/,'$1$2')+' ':'';
 function sb(){const p=USER?person(USER.pid):null;return p?(p.vorname?p.vorname[0]+'. ':'')+p.nachname:''}
 /* Textauszeichnung: Leerzeile = Absatz, "## " = fette Zwischenüberschrift, "- " = Aufzählung (eingerückte Folgezeilen gehören dazu), **fett** */
 function inl(t){return esc(t).replace(/__(.+?)__/g,'<u>$1</u>').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')}
@@ -1568,12 +1585,14 @@ function brief({an,az,betreff,body,rbb,datum,signKennung}){
  <div class="dsig"><p>Mit freundlichen Grüßen</p>${z.vz?`<p class="dvz">${esc(z.vz)}</p>`:''}<p class="dsn">${esc(z.name)}</p><p class="dsf">${esc(z.fkt)}</p></div>
  ${rbb?`<div class="drbb"><b>Rechtsbehelfsbelehrung</b><br>Gegen diese Verfügung kann innerhalb eines Monats nach Bekanntgabe Widerspruch erhoben werden. Der Widerspruch ist schriftlich oder zur Niederschrift bei der Behördenleitung des ${esc(S.meta.behoerde)} einzulegen.</div>`:''}${fuss()}</div>`;
 }
-const anP=p=>`${p.anrede==='Herr'?'Herrn':p.anrede==='Frau'?'Frau':''}<br><b>${esc(p.vorname)} ${esc(p.nachname)}</b><br>${esc(amtG(p.dg,p.anrede))}<br>${esc(p.dienststelle)}<br><i>– persönlich / vertraulich –</i>`;
-function docUrkunde(p,dg,datum,art,signKennung){const m=S.meta;const sg=signer(signKennung);const z=zeichnung(sg);
+const anP=p=>`${p.anrede==='Herr'?'Herrn':p.anrede==='Frau'?'Frau':''}<br><b>${esc(vollName(p))}</b><br>${esc(amtG(p.dg,p.anrede))}<br>${esc(p.dienststelle)}<br><i>– persönlich / vertraulich –</i>`;
+function docUrkunde(p,dg,datum,art,signKennung){const m=S.meta;let sg=signer(signKennung);
+ /* niemand unterzeichnet die eigene Urkunde – dann zeichnet die ranghöchste andere Behördenleitung */
+ if(!sg||sg.id===p.id){const o=S.personal.filter(x=>x.id!==p.id&&rolleOf(x)==='Behördenleitung'&&x.status!=='ausgeschieden').sort((a,b)=>rankIdx(b.dg)-rankIdx(a.dg))[0];if(o)sg=o}const z=zeichnung(sg);
  const anw=/anw/i.test(rank(dg).bes);const bv=anw?'Widerruf':(m.urkBV||'Widerruf');
  const lines=t=>String(t||'').split('\n').map(esc).join('<br>');
  return `<div class="paper urk"><img class="uwap" src="${IMG_WAPPEN}" alt="Landeswappen"><div class="utit">URKUNDE</div>
- <p>${esc(p.anrede||'')}</p><p class="unm">${esc(p.vorname)} ${esc(p.nachname)}</p><p>wird</p>
+ <p>${esc(p.anrede||'')}</p><p class="unm">${esc(vollName(p))}</p><p>wird</p>
  ${art==='ernennung'?`<p>unter Berufung in das<br>Beamtenverhältnis auf ${esc(bv)}</p>`:''}
  <p>mit Wirkung vom ${fmtD(datum)}</p><p>${zumZur(p.anrede)}</p>
  <p class="uamt">${esc(amtG(dg,p.anrede))} ${besGr(dg)}</p><p>ernannt.</p>
@@ -1611,7 +1630,7 @@ function docSchreiben(s){const m=S.meta;
 
 function docAntrag(a){const p=person(a.pid)||{nachname:'?',vorname:'',dg:'',dnr:'',dienststelle:''};const v=person(a.von)||{nachname:'?',vorname:'',dg:'',dienststelle:''};const m=S.meta;
  const row=(k,x)=>`<tr><th style="width:45mm">${esc(k)}</th><td>${x}</td></tr>`;
- return `<div class="paper">${kopf()}<div style="display:flex;justify-content:space-between;font-size:9.5pt;margin-bottom:8mm"><div>Von: <b>${esc(rank(v.dg).n)} ${esc(v.vorname)} ${esc(v.nachname)}</b><br>${esc(wbOf(v.dienststelle))}<br><br>An: <b>Behördenleitung</b><br>– auf dem Dienstweg –</div><div style="text-align:right">Az.: <b>${esc(a.az)}</b><br>Datum: ${fmtD(a.datum)}</div></div>
+ return `<div class="paper">${kopf()}<div style="display:flex;justify-content:space-between;font-size:9.5pt;margin-bottom:8mm"><div>Von: <b>${esc(amtG(v.dg,v.anrede))} ${esc(vollName(v))}</b><br>${esc(wbOf(v.dienststelle))}<br><br>An: <b>Behördenleitung</b><br>– auf dem Dienstweg –</div><div style="text-align:right">Az.: <b>${esc(a.az)}</b><br>Datum: ${fmtD(a.datum)}</div></div>
  <div class="dtitel">Antrag: ${esc(a.art)}${a.params.betreff?' – '+esc(a.params.betreff):''}</div>
  <table class="t">${row('Betroffene/r',`<b>${esc(p.nachname)}, ${esc(p.vorname)}</b>, DNr. ${esc(p.dnr)}`)}${row('Derzeitiges Amt',esc(rank(p.dg).n)+' ('+esc(p.dg)+')')}${row('Dienststelle',esc(p.dienststelle))}${row('Beantragt',esc(a.summary))}${row('Wirksam ab',fmtD(a.params.datum))}</table>
  <div style="font-weight:700;margin-top:5mm">Begründung</div>${para(a.begr)}
@@ -1620,17 +1639,17 @@ function docAntrag(a){const p=person(a.pid)||{nachname:'?',vorname:'',dg:'',dnr:
 /* Bescheid an die antragstellende Führungskraft (Genehmigung ohne Personalmaßnahme bzw. Ablehnung) */
 function docAntragBescheid(a){const p=person(a.pid)||{nachname:'?',vorname:'',dg:'',dnr:'',dienststelle:'',anrede:''};const v=person(a.von)||{nachname:'?',vorname:'',dg:'',dienststelle:'',anrede:''};
  const gen=a.status==='genehmigt';const was=a.art==='Sonstiger Antrag'?(a.params.betreff||'Sonstiger Antrag'):a.art+(a.summary?' ('+a.summary+')':'');
- const body=`${sgh(v)}<p>auf Ihren Antrag vom <b>${fmtD(a.datum)}</b> (Az. ${esc(a.az)}) betreffend <b>${esc(was)}</b> für ${esc(amtG(p.dg,p.anrede))} <b>${esc(p.vorname)} ${esc(p.nachname)}</b>${p.dnr?' ('+esc(p.dnr)+')':''}, ${esc(p.dienststelle)}, ergeht folgende Entscheidung:</p>
+ const body=`${sgh(v)}<p>auf Ihren Antrag vom <b>${fmtD(a.datum)}</b> (Az. ${esc(a.az)}) betreffend <b>${esc(was)}</b> für ${esc(amtG(p.dg,p.anrede))} <b>${esc(vollName(p))}</b>${p.dnr?' ('+esc(p.dnr)+')':''}, ${esc(p.dienststelle)}, ergeht folgende Entscheidung:</p>
  <p style="margin-left:8mm;font-size:12pt"><b>${gen?'Dem Antrag wird stattgegeben.':'Der Antrag wird abgelehnt.'}</b></p>
  ${gen?`<p>Die Entscheidung gilt mit Wirkung vom <b>${fmtD(a.params.datum||a.entschDatum)}</b>.${a.art==='Sonstiger Antrag'?' Eine Personalmaßnahme ist damit nicht verbunden.':''}</p>`:`<p class="dh">Gründe:</p>${para(a.ablehnGrund||String(a.entscheidung||'').replace(/^abgelehnt:\s*/,''))}`}
  <p class="dh">Begründung des Antrages:</p>${para(a.begr)}
  <p>${gen?'Ich bitte Sie, die betroffene Person entsprechend in Kenntnis zu setzen.':'Ich bitte Sie, die betroffene Person über die Entscheidung in Kenntnis zu setzen.'}</p>`;
- return brief({an:`${v.anrede==='Herr'?'Herrn':v.anrede==='Frau'?'Frau':''}<br><b>${esc(v.vorname)} ${esc(v.nachname)}</b><br>${esc(amtG(v.dg,v.anrede))}<br>${esc(wbOf(v.dienststelle))}`,az:a.az,betreff:'Entscheidung über Ihren Antrag – '+was,body,datum:a.entschDatum,signKennung:a.entschKennung||(USER&&USER.kennung)})}
+ return brief({an:`${v.anrede==='Herr'?'Herrn':v.anrede==='Frau'?'Frau':''}<br><b>${esc(vollName(v))}</b><br>${esc(amtG(v.dg,v.anrede))}<br>${esc(wbOf(v.dienststelle))}`,az:a.az,betreff:'Entscheidung über Ihren Antrag – '+was,body,datum:a.entschDatum,signKennung:a.entschKennung||(USER&&USER.kennung)})}
 function docListe(title,sub,head,rows){return `<div class="paper">${kopf()}<div class="dtitel">${esc(title)}</div><div style="font-size:9pt;color:#444;margin:-3mm 0 4mm">${esc(sub)}</div><table class="t"><thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${head.length}">Keine Einträge.</td></tr>`}</tbody></table><div style="font-size:8.5pt;margin-top:4mm">Nur für den Dienstgebrauch.</div>${fuss()}</div>`}
 function docPersonalbogen(p){const r=rank(p.dg);const ms=S.massnahmen.filter(m=>m.pid===p.id).sort((a,b)=>a.datum<b.datum?-1:1);
  const row=(a,b)=>`<tr><th style="width:45mm">${esc(a)}</th><td>${b}</td></tr>`;
  return `<div class="paper">${kopf()}<div style="display:flex;justify-content:space-between;align-items:baseline"><div class="dtitel" style="margin:0">Personalbogen</div><div style="font-size:9pt">Personalakte Nr. <b>${esc(p.dnr)}</b></div></div><div style="font-size:8.5pt;color:#b3261e;margin-bottom:3mm">VERTRAULICH – Personalaktendaten</div>
- <table class="t">${row('Name, Vorname',`<b>${esc(p.nachname)}, ${esc(p.vorname)}</b>`)}${row('Geburtsdatum',fmtD(p.geb))}${row('Amtsbezeichnung',`${esc(r.n)} (${esc(p.dg)})`)}${row('Besoldungsgruppe',esc(r.bes))}${row('Laufbahngruppe',esc({mD:'mittlerer Dienst',gD:'gehobener Dienst',hD:'höherer Dienst'}[r.lg]||''))}${row('Dienststelle',esc(p.dienststelle))}${row('Funktion',esc(p.funktion))}${row('Diensteintritt',fmtD(p.eintritt))}${row('Letzte Beförderung',fmtD(p.befoerdert))}${row('Status',esc(p.status)+(p.austritt?' seit '+fmtD(p.austritt)+' ('+esc(p.austrittGrund)+')':''))}${p.rufname?row('Funkrufname',esc(p.rufname)):''}</table>
+ <table class="t">${row('Name, Vorname',`<b>${esc(p.nachname)}, ${esc(p.vorname)}</b>${p.titel?', '+esc(p.titel):''}`)}${row('Geburtsdatum',fmtD(p.geb))}${row('Amtsbezeichnung',`${esc(r.n)} (${esc(p.dg)})`)}${row('Besoldungsgruppe',esc(r.bes))}${row('Laufbahngruppe',esc({mD:'mittlerer Dienst',gD:'gehobener Dienst',hD:'höherer Dienst'}[r.lg]||''))}${row('Dienststelle',esc(p.dienststelle))}${row('Funktion',esc(p.funktion))}${row('Diensteintritt',fmtD(p.eintritt))}${row('Letzte Beförderung',fmtD(p.befoerdert))}${row('Status',esc(p.status)+(p.austritt?' seit '+fmtD(p.austritt)+' ('+esc(p.austrittGrund)+')':''))}${p.rufname?row('Funkrufname',esc(p.rufname)):''}</table>
  
  <div style="font-weight:700;margin-top:5mm">Werdegang</div><table class="t"><tr><th style="width:24mm">Datum</th><th>Maßnahme</th><th>Bemerkung</th></tr>${ms.map(m=>`<tr><td>${fmtD(m.datum)}</td><td>${esc(m.art)}${m.nach?' → '+esc(m.nach):''}</td><td>${esc(m.text)}</td></tr>`).join('')||'<tr><td colspan="3">–</td></tr>'}</table>
  ${fuss()}</div>`}
@@ -1741,7 +1760,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.3.5 (Build 26.10.01)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.3.6 (Build 26.10.01)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 (function init(){
