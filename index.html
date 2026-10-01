@@ -297,7 +297,7 @@ table.dp{border-collapse:collapse;min-width:760px;width:100%;background:var(--fi
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.3.4 (Build 26.10.01)</div>
+    <div class="hm">BeLIS 5.3.5 (Build 26.10.01)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -887,7 +887,7 @@ function renderToolbar(){
  const ex=(v.extra||[]).map((x,i)=>[x,i]).filter(([x])=>allowed(x));
  if(ex.length){h+='<span class="tsep"></span>';ex.forEach(([x,i])=>{h+=b('x'+i,x.ic||'doc',x.l,(x.sel&&!hasSel),x.tip)})}
  h+='<span class="tsep"></span>';
- if(v.print)h+=b('print','print','Drucken',false,'Liste drucken (F8)');
+ if(v.print)h+=b('print','print','PDF',false,'Liste als PDF (F8)');
  h+=b('ref','ref','Aktualisieren',false,'Aktualisieren (F5)');
  h+='<span class="tsep"></span>'+b('logout','exit','Abmelden',false,'Abmelden');
  $('#toolbar').innerHTML=h;
@@ -1640,16 +1640,71 @@ function paginate(html){const t=document.createElement('div');t.innerHTML=html;
   const tb=document.createElement('table');tb.className='ptab';tb.innerHTML='<thead><tr><td><div class="psp-top"></div></td></tr></thead><tfoot><tr><td><div class="psp-bot"></div></td></tr></tfoot><tbody><tr><td></td></tr></tbody>';
   const td=tb.querySelector('tbody td');inner.forEach(c=>td.appendChild(c));pp.appendChild(tb)});
  return t.innerHTML}
+/* ================= PDF-Erzeugung (statt Drucken) ================= */
+const PDF_LIBS=['https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'];
+let pdfLibsP=null;
+function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=u;s.onload=()=>res();s.onerror=()=>rej(new Error('Bibliothek nicht ladbar: '+u.split('/').pop()));document.head.appendChild(s)})}
+function ensurePdfLibs(){if(window.html2canvas&&window.jspdf)return Promise.resolve();if(!pdfLibsP)pdfLibsP=Promise.all(PDF_LIBS.map(loadScript)).catch(e=>{pdfLibsP=null;throw e});return pdfLibsP}
+/* Dokument auf A4-Seiten verteilen: Logo auf jeder Seite, blauer Balken nur auf Seite 1, Kennzeichnung unten auf jeder Seite */
+function buildPdfPages(html){
+ const host=document.createElement('div');host.style.cssText='position:fixed;left:-12000px;top:0;width:210mm;background:#fff;z-index:-1';document.body.appendChild(host);
+ host.innerHTML=html;const src=host.querySelector('.paper');const pages=[];
+ if(!src){host.remove();throw new Error('Kein Dokument')}
+ if(src.classList.contains('urk')){src.style.cssText+=';height:297mm;min-height:297mm;box-shadow:none;margin:0';pages.push(src);return{host,pages}}
+ const head=src.querySelector('.dhead'),wm=src.querySelector('.dwm'),fus=src.querySelector('.dfuss');
+ const units=[];
+ [...src.children].forEach(c=>{if(c.matches('.prep,.pfuss,.dhead,.dfuss,.dwm'))return;
+  if(c.tagName==='UL')[...c.children].forEach(li=>units.push({li,cls:c.className}));
+  else if(c.matches('table.t')&&c.tBodies[0]&&c.tBodies[0].rows.length>1)[...c.tBodies[0].rows].forEach(tr=>units.push({tr,thead:c.tHead,cls:c.className}));
+  else units.push({el:c})});
+ src.remove();
+ const probe=document.createElement('div');probe.style.height='100mm';host.appendChild(probe);const pxmm=probe.getBoundingClientRect().height/100;probe.remove();
+ let page,body,ul,tb,limit;
+ const newPage=first=>{page=document.createElement('div');page.className='paper';page.style.cssText='height:297mm;min-height:297mm;overflow:hidden;box-shadow:none;margin:0';
+  if(head){if(first)page.appendChild(head.cloneNode(true));else{const h=document.createElement('div');h.className='dhead';h.style.marginBottom='5mm';const lg=head.querySelector('.dlogo');if(lg)h.appendChild(lg.cloneNode(true));page.appendChild(h)}}
+  if(wm)page.appendChild(wm.cloneNode(true));if(fus)page.appendChild(fus.cloneNode(true));
+  body=document.createElement('div');page.appendChild(body);host.appendChild(page);pages.push(page);ul=null;tb=null;
+  limit=page.getBoundingClientRect().top+pxmm*274;
+ };
+ const place=u=>{
+  if(u.li){if(!ul){ul=document.createElement('ul');ul.className=u.cls;body.appendChild(ul)}const L=ul;L.appendChild(u.li);return()=>{u.li.remove();if(!L.children.length){L.remove();ul=null}}}
+  if(u.tr){if(!tb){tb=document.createElement('table');tb.className=u.cls;if(u.thead)tb.appendChild(u.thead.cloneNode(true));tb.appendChild(document.createElement('tbody'));body.appendChild(tb)}const T=tb;T.tBodies[0].appendChild(u.tr);return()=>{u.tr.remove();if(!T.tBodies[0].rows.length){T.remove();tb=null}}}
+  ul=null;tb=null;body.appendChild(u.el);return()=>u.el.remove();
+ };
+ const fits=()=>{const r=body.getBoundingClientRect();const last=body.lastElementChild;const mb=last?parseFloat(getComputedStyle(last).marginBottom)||0:0;return r.bottom-mb<=limit};
+ newPage(true);
+ let n=0;units.forEach(u=>{const undo=place(u);if(!fits()&&n>0){undo();newPage(false);n=0;place(u)}n++});
+ return{host,pages};
+}
+function pdfName(html,title){const t=document.createElement('div');t.innerHTML=html;let n='';
+ const u=t.querySelector('.paper.urk');if(u){n='Urkunde '+((t.querySelector('.unm')||{}).textContent||'')}
+ else{n=((t.querySelector('.dtitel')||{}).textContent||title||'Dokument')}
+ return (n.replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').replace(/_+/g,'_').slice(0,110)||'Dokument')+'.pdf'}
+async function makePdf(html,fname){
+ await ensurePdfLibs();try{await document.fonts.ready}catch(e){}
+ const{host,pages}=buildPdfPages(html);
+ try{const{jsPDF}=window.jspdf;const pdf=new jsPDF({unit:'mm',format:'a4',orientation:'portrait',compress:true});
+  for(let i=0;i<pages.length;i++){const c=await html2canvas(pages[i],{scale:2,backgroundColor:'#ffffff',logging:false,useCORS:true});if(i)pdf.addPage();pdf.addImage(c.toDataURL('image/jpeg',0.92),'JPEG',0,0,210,297,undefined,'FAST')}
+  pdf.setProperties({title:fname.replace(/\.pdf$/,'').replace(/_/g,' '),creator:'BeLIS',author:USER?USER.name:''});
+  pdf.save(fname);return pages.length}
+ finally{host.remove()}
+}
 function printDoc(html,title){
+ const raw=html;const fname=pdfName(raw,title);let busy=false;
  html=paginate(html);
- const d=openDlg({title:'Druckvorschau – '+title,size:'wide',body:`<div class="paperwrap">${html}</div>`,left:[{label:'Drucken',pri:true,close:false,fn:()=>{try{window.print()}catch(e){toast('Drucken ist in dieser Umgebung nicht verfügbar.',true)}log('Dokument gedruckt',title)}}],buttons:[{label:'Schließen',pri:true}]});
+ const d=openDlg({title:'Vorschau – '+title,size:'wide',body:`<div class="paperwrap">${html}</div>`,
+  left:[{label:'Als PDF speichern',pri:true,close:false,fn:async a=>{if(busy)return;busy=true;const b=[...a.el.querySelectorAll('.df .btn')].find(x=>/PDF/.test(x.textContent));if(b){b.disabled=true;b.textContent='PDF wird erstellt …'}
+    try{const n=await makePdf(raw,fname);toast(`PDF gespeichert: ${fname} (${n} Seite${n>1?'n':''})`);log('PDF erstellt',fname)}
+    catch(e){toast('PDF konnte nicht erstellt werden: '+(e&&e.message||e),true)}
+    finally{busy=false;if(b){b.disabled=false;b.textContent='Als PDF speichern'}}}}],
+  buttons:[{label:'Schließen'}]});
  const fit=()=>{const w=d.q('.paperwrap');const pp=d.q('.paper');if(!w||!pp)return;const avail=w.clientWidth-32;const full=pp.offsetWidth;const s=Math.min(1,avail/full);pp.style.transform=s<1?`scale(${s})`:'';pp.style.transformOrigin='top left';pp.style.marginBottom=s<1?`${-(pp.offsetHeight*(1-s))}px`:'';pp.style.marginLeft=s<1?'0':''};
  setTimeout(fit,0);
 }
 
 /* ================= Menü & Tastatur ================= */
 const MENU=[
- ['Datei',[['Kennwort ändern …','',()=>changePw(person(USER.pid),false)],['Datensicherung …','',()=>go('sicherung')],['Drucken','F8',()=>tbAct('print')],'-',['Abmelden','Strg+Q',()=>logout()]]],
+ ['Datei',[['Kennwort ändern …','',()=>changePw(person(USER.pid),false)],['Datensicherung …','',()=>go('sicherung')],['PDF erstellen','F8',()=>tbAct('print')],'-',['Abmelden','Strg+Q',()=>logout()]]],
  ['Bearbeiten',[['Neu','F2',()=>tbAct('neu')],['Öffnen / Bearbeiten','Enter',()=>tbAct('edit')],['Löschen','Entf',()=>tbAct('del')],'-',['Suchen','F3',()=>{const s=document.querySelector('#vBody input[type=search]');if(s)s.focus();else toast('In dieser Ansicht ist keine Suche verfügbar.')}]]],
  ['Ansicht',[...['cockpit','wv','antraege','org','massnahmen','disziplinar','bewerbungen','schriftgut'].map((id,i)=>[{cockpit:'Übersicht',wv:'Wiedervorlagen',antraege:'Anträge',org:'Organisation',massnahmen:'Personalmaßnahmen',disziplinar:'Disziplinarverfahren',bewerbungen:'Bewerbungen hD',schriftgut:'Schriftgut / Erlasse'}[id],'',()=>go(id)]),'-',['Darstellung: hell','',()=>setTheme('light')],['Darstellung: dunkel','',()=>setTheme('dark')],['Darstellung: Systemvorgabe','',()=>setTheme('')]]],
  ['Vorgang',[['Einstellung …','',()=>einstellen()],['Beförderung (hD) …','',()=>{if(isBL())pickPerson('Beförderung im höheren Dienst',befoerdern);else pickPerson('Antrag auf Beförderung',pid=>antragNeu(pid,'Beförderung'))}],['Versetzung …','',()=>pickPerson('Versetzung',versetzen)],['Entlassung …','',()=>pickPerson('Entlassung',entlassen)],'-',['Status ändern …','',()=>pickPerson('Dienststatus',statusAendern)],['Antrag stellen …','',()=>pickPerson('Antrag stellen',pid=>antragNeu(pid))],['Personalakte öffnen …','',()=>pickPerson('Personalakte öffnen',id=>personalakte(id),{all:1,self:1,ex:1,ro:1})],'-',['Disziplinarverfahren einleiten …','',()=>V.disziplinar.neu()],['Schreiben verfassen …','',()=>V.schriftgut.neu()],['Wiedervorlage …','',()=>V.wv.neu()]]],
@@ -1664,7 +1719,7 @@ function buildMenu(){
  mb.querySelectorAll('[data-mi]').forEach(b=>b.onclick=e=>{e.stopPropagation();mb.querySelectorAll('.open').forEach(x=>x.classList.remove('open'));open=null;const [i,j]=b.dataset.mi.split('|');if(!USER)return;MENU[i][1][j][2]()});
  document.addEventListener('click',()=>{mb.querySelectorAll('.open').forEach(x=>x.classList.remove('open'));open=null});
 }
-const FK=[['F1','Hilfe',()=>help()],['F2','Neu',()=>tbAct('neu')],['F3','Suchen',()=>MENU[1][1][4][2]()],['F5','Aktualisieren',()=>tbAct('ref')],['F6','Personalakte',()=>pickPerson('Personalakte öffnen',id=>personalakte(id),{all:1,self:1,ex:1,ro:1})],['F8','Drucken',()=>tbAct('print')],['F9','Übersicht',()=>go('cockpit')],['F10','Maßnahmen',()=>go('massnahmen')],['Esc','Schließen',()=>closeTop()]];
+const FK=[['F1','Hilfe',()=>help()],['F2','Neu',()=>tbAct('neu')],['F3','Suchen',()=>MENU[1][1][4][2]()],['F5','Aktualisieren',()=>tbAct('ref')],['F6','Personalakte',()=>pickPerson('Personalakte öffnen',id=>personalakte(id),{all:1,self:1,ex:1,ro:1})],['F8','PDF',()=>tbAct('print')],['F9','Übersicht',()=>go('cockpit')],['F10','Maßnahmen',()=>go('massnahmen')],['Esc','Schließen',()=>closeTop()]];
 function buildFkeys(){$('#fkeys').innerHTML=FK.map((f,i)=>`<button data-fk="${i}"><b>${f[0]}</b>${f[1]}</button>`).join('');$('#fkeys').querySelectorAll('[data-fk]').forEach(b=>b.onclick=()=>{if(USER)FK[+b.dataset.fk][2]()})}
 function closeTop(){const d=dlgStack[dlgStack.length-1];if(d)d.close()}
 document.addEventListener('keydown',e=>{
@@ -1685,8 +1740,8 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <p><b>Rollen.</b> Behördenleitung (${esc(csv(S.meta.rollenBL).join(', '))}): Vollzugriff. Leitung Wachbezirk (${esc(csv(S.meta.rollenLW).join(', '))}): im Wachbezirk Innenstadt-Ost Umsetzungen, Statusänderungen und Einleitung von Disziplinarverfahren. <b>Beförderungen</b> gibt es nur in Ämter des höheren Dienstes; sie verfügt ausschließlich die Behördenleitung. Beförderungen, Versetzungen in andere Bereiche, Suspendierungen und Entlassungen laufen als <b>Antrag</b> an die Behördenleitung.</p>
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
-function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste drucken</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.3.4 (Build 26.10.01)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.3.5 (Build 26.10.01)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 (function init(){
