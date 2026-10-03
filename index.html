@@ -332,7 +332,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.4.2 (Build 26.10.02)</div>
+    <div class="hm">BeLIS 5.4.3 (Build 26.10.02)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -543,7 +543,7 @@ const Store={timers:{},last:{},unsub:[],
   const v=JSON.stringify(S[key]);if(this.last[key]===v)return Promise.resolve();this.last[key]=v;
   setSync('Speichere …');
   return this.col().doc(key).set({v,at:firebase.firestore.FieldValue.serverTimestamp(),by:USER?USER.kennung:'SYSTEM'})
-   .then(()=>setSync('Gespeichert '+new Date().toLocaleTimeString('de-DE')))
+   .then(()=>{setSync('Gespeichert '+new Date().toLocaleTimeString('de-DE'));if(key==='personal'||key==='meta')zugangSync()})
    .catch(e=>{delete this.last[key];setSync('Speicherfehler ('+(e&&e.code||'?')+')',true);toast('Speichern fehlgeschlagen: '+(e&&e.code==='permission-denied'?'keine Berechtigung (Zugriffsregeln prüfen).':(e&&e.message||e)),true)});
  },
  flush(){return Promise.all(Object.keys(this.timers).map(k=>{clearTimeout(this.timers[k]);return this.write(k)}))},
@@ -568,6 +568,37 @@ const Store={timers:{},last:{},unsub:[],
  unlisten(){this.unsub.forEach(f=>{try{f()}catch(e){}});this.unsub=[]},
  reset(){this.unlisten();Object.values(this.timers).forEach(clearTimeout);this.timers={};this.last={}}
 };
+/* Zugriffsliste für die Firestore-Regeln: wer lesen/schreiben darf, ergibt sich aus der Personalakte.
+   Nur die Behördenleitung schreibt sie – automatisch nach jeder Änderung des Personals. */
+let ZUGANG_LAST='';
+function zugangListe(){
+ const F=S.personal.filter(p=>rolleOf(p)&&p.status!=='ausgeschieden'&&p.status!=='suspendiert'&&!(p.acc&&p.acc.gesperrt));
+ return{alle:F.map(p=>loginMail(p.nachname)).sort(),bl:F.filter(p=>rolleOf(p)==='Behördenleitung').map(p=>loginMail(p.nachname)).sort()};
+}
+function zugangSync(force){
+ if(!FB||!FB.auth.currentUser||!USER||!isBL())return Promise.resolve();
+ const z=zugangListe();const j=JSON.stringify(z);if(!force&&j===ZUGANG_LAST)return Promise.resolve();
+ return FB.db.collection('zugang').doc('liste').set(Object.assign({},z,{stand:firebase.firestore.FieldValue.serverTimestamp(),by:USER.kennung}))
+  .then(()=>{ZUGANG_LAST=j}).catch(e=>{if(e&&e.code==='permission-denied')setSync('Zugriffsliste: Regeln noch nicht aktualisiert',true)});
+}
+/* Anmeldekonto anlegen – ohne die eigene Sitzung zu beenden (zweite Firebase-Instanz).
+   Reihenfolge: direkt (Registrierung erlaubt) → Cloud Function (Blaze) → Anleitung Konsole */
+async function kontoAnlegen(p){
+ const email=loginMail(p.nachname),pw=S.meta.stdPw||'';
+ if(pw.length<6)return{ok:false,grund:'Standardkennwort fehlt (Stammdaten, mind. 6 Zeichen).'};
+ try{
+  const app2=(firebase.apps||[]).find(a=>a.name==='kontoanlage')||firebase.initializeApp(FB_CFG,'kontoanlage');
+  const a2=app2.auth();try{await a2.setPersistence(firebase.auth.Auth.Persistence.NONE)}catch(e){}
+  await a2.createUserWithEmailAndPassword(email,pw);try{await a2.signOut()}catch(e){}
+  return{ok:true,neu:true};
+ }catch(e){
+  const c=e&&e.code;
+  if(c==='auth/email-already-in-use')return{ok:true,neu:false,vorhanden:true};
+  if(c!=='auth/admin-restricted-operation'&&c!=='auth/operation-not-allowed'){if(c==='auth/network-request-failed')return{ok:false,grund:'Keine Verbindung zum Anmeldedienst.'}}
+ }
+ try{const r=await firebase.app().functions('europe-west3').httpsCallable('kennwortZuruecksetzen')({email});if(r&&r.data&&r.data.ok)return{ok:true,neu:!!r.data.neu,ueberFunktion:true}}catch(e){}
+ return{ok:false,grund:'gesperrt'};
+}
 window.addEventListener('beforeunload',()=>{try{Store.flush()}catch(e){}});
 function save(...keys){keys.forEach(k=>Store.push(k))}
 /* Normalisierung + Migration aus Version 1; liefert true, wenn Daten angepasst wurden */
@@ -864,6 +895,7 @@ function finishLogin(p){
  USER={pid:p.id,kennung:p.nachname.toUpperCase(),name:p.nachname+', '+p.dg,rolle,wb:wbOf(p.dienststelle),login:new Date().toISOString()};
  p.acc=p.acc||{};p.acc.last=USER.login;save('personal');
  try{ensureFarben()}catch(e){}
+ zugangSync(true);
  $('#login').style.display='none';
  CUR='cockpit';
  log('Anmeldung',rolle+(rolle==='Leitung Wachbezirk'?' – '+USER.wb:''));render();
@@ -1207,9 +1239,11 @@ function personalakte(id,tab){
 }
 
 /* --- Personalmaßnahmen: Ausführung --- */
-function doBef(pid,nach,datum,text){const p=person(pid);const down=rankIdx(nach)<rankIdx(p.dg);
+function doBef(pid,nach,datum,text){const p=person(pid);const down=rankIdx(nach)<rankIdx(p.dg);const warZugang=!!rolleOf(p);
  const m={id:uid(),az:AZ.P(),art:down?'Zurückstufung':'Beförderung',pid,von:p.dg,nach,datum,text:text||(down?'Zurückstufung':'Beförderung'),user:USER.kennung};
- S.massnahmen.push(m);p.dg=nach;p.befoerdert=datum;save('personal','massnahmen');log(m.art,p.dnr+' '+p.nachname+': '+m.von+' → '+m.nach+' ('+m.az+')');render();toast(m.art+' verfügt: '+p.nachname+' → '+nach);return m}
+ S.massnahmen.push(m);p.dg=nach;p.befoerdert=datum;save('personal','massnahmen');log(m.art,p.dnr+' '+p.nachname+': '+m.von+' → '+m.nach+' ('+m.az+')');render();toast(m.art+' verfügt: '+p.nachname+' → '+nach);
+ if(!warZugang&&rolleOf(p)&&isBL())setTimeout(()=>confirmDlg('BeLIS-Zugang',`Mit dem Amt ${esc(nach)} erhält ${esc(p.nachname)} Zugang zu BeLIS (${esc(rolleOf(p))}). Jetzt ein Anmeldekonto anlegen?`,()=>zugangAnlegenDlg(p),'Konto anlegen'),900);
+ return m}
 function doVers(pid,ds,funktion,datum,text){const p=person(pid);
  const m={id:uid(),az:AZ.P(),art:'Versetzung',pid,von:p.dienststelle,nach:ds,datum,text:(text||'')+(funktion?' – Verwendung: '+funktion:''),user:USER.kennung};
  S.massnahmen.push(m);p.dienststelle=ds;if(funktion)p.funktion=funktion;save('personal','massnahmen');log('Versetzung',p.nachname+': '+m.von+' → '+m.nach);render();return m}
@@ -1522,24 +1556,23 @@ V.stammdaten={t:'Stammdaten',
 /* ================= Benutzerverwaltung ================= */
 V.benutzer={t:'Benutzerverwaltung',editLabel:'Personalakte',neuLabel:'Führungskraft erfassen',
  neu(){const F=[{k:'anrede',l:'Anrede',t:'select',o:['Herr','Frau'],empty:'(ohne)'},{k:'nachname',l:'Name (= Benutzername)',req:1},{k:'vorname',l:'Vorname',req:1},{k:'dnr',l:'Dienstnummer',req:1},{k:'dg',l:'Amt',t:'select',req:1,o:()=>rankOpts(R().filter(r=>rolleOf({dg:r.k})))},{k:'dienststelle',l:'Dienststelle',t:'select',req:1,o:DST},{k:'funktion',l:'Funktion',ph:'z. B. Leiterin Wachbezirk Süd'},{k:'befoerdert',l:'Im Amt seit',t:'date'}];
-  openDlg({title:'Führungskraft erfassen',body:'<div class="hint info">Anschließend in der Benutzerverwaltung „Zugang einrichten“ wählen. Für bereits im Amt befindliche Führungskräfte. Neuernennungen erfolgen über Personalmaßnahmen bzw. Bewerbungen hD. Bei Leitungen eines Wachbezirks bestimmt die Dienststelle den Zuständigkeitsbereich.</div>'+formHtml(F,{befoerdert:today()}),
+  openDlg({title:'Führungskraft erfassen',body:'<div class="hint info">Die Person wird sofort in die Datenbank übernommen und erhält – soweit möglich – direkt ein Anmeldekonto mit dem Standardkennwort. Für bereits im Amt befindliche Führungskräfte. Neuernennungen erfolgen über Personalmaßnahmen bzw. Bewerbungen hD. Bei Leitungen eines Wachbezirks bestimmt die Dienststelle den Zuständigkeitsbereich.</div>'+formHtml(F,{befoerdert:today()}),
    buttons:[{label:'Erfassen',pri:true,fn:a=>{const v=readForm(a,F);if(!v)return false;if(S.personal.some(x=>x.dnr===v.dnr)){toast('Die Dienstnummer '+v.dnr+' ist bereits erfasst.',true);return false}
     if(S.personal.some(x=>x.status!=='ausgeschieden'&&x.nachname.toLowerCase()===v.nachname.toLowerCase()))toast('Hinweis: Nachname mehrfach vorhanden – Anmeldung dann nur mit Dienstnummer.');
-    const p=Object.assign({id:uid(),status:'aktiv',eintritt:'',geb:'',rufname:'',kontakt:'',quals:[],vermerke:[],acc:{}},v);S.personal.push(p);save('personal');log('Führungskraft erfasst',p.dg+' '+p.nachname);SEL.benutzer=p.id;render()}},{label:'Abbrechen'}]})},
+    const p=Object.assign({id:uid(),status:'aktiv',eintritt:'',geb:'',rufname:'',kontakt:'',quals:[],vermerke:[],acc:{must:true}},v);S.personal.push(p);try{ensureFarben()}catch(e){}Store.write('personal');setTimeout(()=>zugangAnlegenDlg(p,true),60);log('Führungskraft erfasst',p.dg+' '+p.nachname);SEL.benutzer=p.id;render()}},{label:'Abbrechen'}]})},
  count:()=>S.personal.filter(p=>rolleOf(p)&&p.status!=='ausgeschieden'&&!(p.acc||{}).hash).length||'',
  render(){const rows=S.personal.filter(p=>rolleOf(p)&&p.status!=='ausgeschieden').sort((a,b)=>rankIdx(b.dg)-rankIdx(a.dg));
-  return `<div class="hint info">Die Anmeldung erfolgt mit <b>Nachname und Kennwort</b> über Firebase. Für jede Führungskraft wird in der Firebase-Konsole ein Konto mit der unten angezeigten <b>Anmeldekennung</b> angelegt und die Kennung in die Zugriffsregeln eingetragen („Zugriffsregeln erzeugen“). BeLIS prüft zusätzlich das Amt laut Personalakte: <b>${esc(csv(S.meta.rollenBL).join(', '))}</b> → Behördenleitung, <b>${esc(csv(S.meta.rollenLW).join(', '))}</b> → Leitung Wachbezirk.</div>`+
+  return `<div class="hint info">Die Anmeldung erfolgt mit <b>Nachname und Kennwort</b> über Firebase. Neue Führungskräfte legst du mit „Führungskraft erfassen“ an – sie werden sofort in die Datenbank übernommen, erhalten ein Anmeldekonto mit dem Standardkennwort und werden automatisch für den Datenzugriff freigegeben. Gesperrte, suspendierte oder ausgeschiedene Personen verlieren den Zugriff sofort. BeLIS prüft zusätzlich das Amt laut Personalakte: <b>${esc(csv(S.meta.rollenBL).join(', '))}</b> → Behördenleitung, <b>${esc(csv(S.meta.rollenLW).join(', '))}</b> → Leitung Wachbezirk.</div>`+
   grid('benutzer',[{l:'Farbe',f:r=>`<i class="pdot" style="background:${farbe(r.id)};width:14px;height:14px"></i>`,w:'44px'},{l:'Benutzer (Nachname)',f:r=>'<b>'+esc(r.nachname)+'</b>, '+esc(r.vorname)},{l:'Amt',f:r=>esc(r.dg)},{l:'Rolle',f:r=>esc(rolleOf(r))},{l:'Zuständigkeit',f:r=>rolleOf(r)==='Behördenleitung'?'Gesamtbehörde':esc(wbOf(r.dienststelle))},{l:'Anmeldekennung (Firebase)',f:r=>esc(loginMail(r.nachname)),mono:1},{l:'Konto',f:r=>{const a=r.acc||{};return a.gesperrt?stBadge('gesperrt'):a.must?'<span class="st warn">Kennwortwechsel verlangt</span>':a.last?'<span class="st ok">aktiv</span>':'<span class="st n">noch nicht angemeldet</span>'}},{l:'Letzte Anmeldung',f:r=>fmtTs((r.acc||{}).last)}],rows,'Keine Bediensteten mit zugangsberechtigtem Amt.')},
  edit(id){personalakte(id)},
  extra:[
-  {l:'Zugang einrichten',ic:'help',sel:1,fn:id=>{const p=person(id);const m=loginMail(p.nachname);
-   infoDlg('Zugang einrichten – '+p.nachname,`<p style="margin-top:0">So erhält <b>${esc(p.dg)} ${esc(p.nachname)}</b> Zugang:</p><ol style="padding-left:18px;margin:0 0 8px"><li>Firebase-Konsole › <b>Authentication</b> › <b>Nutzer hinzufügen</b></li><li>E-Mail: <code style="user-select:all">${esc(m)}</code></li><li>Ein Initialkennwort vergeben (mind. 8 Zeichen, Buchstaben und Ziffern) und vertraulich übermitteln.</li><li>Hier „Kennwortwechsel verlangen“ wählen – beim ersten Anmelden muss das Kennwort geändert werden.</li><li>„Zugriffsregeln erzeugen“ und die Regeln in Firestore › <b>Regeln</b> veröffentlichen.</li></ol><p>Angemeldet wird mit dem Nachnamen <b>${esc(p.nachname)}</b> und dem Kennwort.</p>`)}},
+  {l:'Zugang anlegen',ic:'neu',sel:1,fn:id=>zugangAnlegenDlg(person(id))},
   {l:'Farbe festlegen',ic:'edit',sel:1,fn:id=>farbeDlg(person(id))},
   {l:'Kennwort zurücksetzen',ic:'ref',sel:1,fn:id=>kennwortZuruecksetzen(person(id))},
   {l:'Kennwortwechsel verlangen',ic:'edit',sel:1,fn:id=>{const p=person(id);p.acc=p.acc||{};p.acc.must=!p.acc.must;save('personal');log(p.acc.must?'Kennwortwechsel verlangt':'Kennwortwechsel zurückgenommen',p.nachname);render()}},
   {l:'Sperren / Entsperren',ic:'del',sel:1,fn:id=>{const p=person(id);if(p.id===USER.pid){toast('Der eigene Zugang kann nicht gesperrt werden.',true);return}p.acc=p.acc||{};p.acc.gesperrt=!p.acc.gesperrt;save('personal');log(p.acc.gesperrt?'Zugang gesperrt':'Zugang entsperrt',p.nachname);render();
-   if(p.acc.gesperrt)toast('Gesperrt. Für eine vollständige Sperre das Konto zusätzlich in der Firebase-Konsole deaktivieren.')}},
-  {l:'Zugriffsregeln erzeugen',ic:'doc',fn:()=>{const t=firestoreRules();openDlg({title:'Firestore-Zugriffsregeln',size:'wide',body:`<p style="margin-top:0">In der Firebase-Konsole › <b>Firestore Database</b> › <b>Regeln</b> den gesamten Inhalt durch diesen Text ersetzen und „Veröffentlichen“ klicken. Gesperrte Zugänge sind nicht enthalten.</p><textarea id="rulesTx" class="mono" rows="18" readonly>${esc(t)}</textarea>`,left:[{label:'Kopieren',close:false,fn:a=>{const x=a.q('#rulesTx');x.select();try{navigator.clipboard.writeText(x.value).then(()=>toast('Regeln kopiert.'))}catch(e){document.execCommand('copy');toast('Regeln kopiert.')}}}],buttons:[{label:'Schließen',pri:true}]})}}
+   toast(p.acc.gesperrt?'Gesperrt – der Datenzugriff wird sofort entzogen.':'Entsperrt – der Datenzugriff ist wieder freigegeben.')}},
+  {l:'Zugriffsregeln erzeugen',ic:'doc',fn:()=>{const t=firestoreRules();openDlg({title:'Firestore-Zugriffsregeln',size:'wide',body:`<p style="margin-top:0">Einmalig nötig: In der Firebase-Konsole › <b>Firestore Database</b> › <b>Regeln</b> den gesamten Inhalt durch diesen Text ersetzen und „Veröffentlichen“ klicken. Danach pflegt BeLIS die Zugriffsliste selbst – neue Führungskräfte brauchen keine Regeländerung mehr.</p><textarea id="rulesTx" class="mono" rows="18" readonly>${esc(t)}</textarea>`,left:[{label:'Kopieren',close:false,fn:a=>{const x=a.q('#rulesTx');x.select();try{navigator.clipboard.writeText(x.value).then(()=>toast('Regeln kopiert.'))}catch(e){document.execCommand('copy');toast('Regeln kopiert.')}}}],buttons:[{label:'Schließen',pri:true}]})}}
  ]
 };
 /* Kennwort auf das Standardkennwort zurücksetzen.
@@ -1563,21 +1596,56 @@ async function kennwortZuruecksetzen(p){
    <p>Der Kennwortwechsel bei der nächsten Anmeldung ist in BeLIS bereits vorgemerkt. An den Daten und Zugriffsregeln ändert sich nichts.</p><p style="color:var(--tx3)">Einmal eingerichtet (siehe Anleitung, Abschnitt „Kennwort-Zurücksetzen aus BeLIS“), geht das künftig mit einem Klick.</p>`,buttons:[{label:'OK',pri:true}]});
  },'Zurücksetzen');
 }
+async function zugangAnlegenDlg(p,nachErfassung){
+ if(!p||!rolleOf(p)){toast('Nur Ämter mit BeLIS-Zugang (Stammdaten › Zugang) erhalten ein Konto.',true);return}
+ if(!isBL()){toast('Zugänge legt die Behördenleitung an.',true);return}
+ msg('Anmeldekonto wird angelegt …');
+ const r=await kontoAnlegen(p);const std=S.meta.stdPw||'';const mail=loginMail(p.nachname);
+ p.acc=Object.assign(p.acc||{},{must:true,gesperrt:false,kontoAm:new Date().toISOString()});Store.write('personal');await zugangSync(true);
+ if(r.ok&&r.vorhanden){log('Zugang freigegeben',p.nachname+' (Konto bestand bereits)');render();
+  infoDlg('Zugang freigegeben',`<p style="margin-top:0">Für <b>${esc(p.nachname)}</b> besteht bereits ein Anmeldekonto. Der Zugriff auf die Datenbank ist freigegeben.</p><p>Falls das Kennwort unbekannt ist: <b>Kennwort zurücksetzen</b>.</p>`);return}
+ if(r.ok){log('Zugang angelegt',p.nachname);render();
+  infoDlg('Zugang angelegt',`<p style="margin-top:0">${nachErfassung?'Die Führungskraft wurde erfasst und ':''}${esc(p.dg)} <b>${esc(p.nachname)}</b> kann sich ab sofort anmelden:</p><dl class="kv"><dt>Nachname</dt><dd><b>${esc(p.nachname)}</b></dd><dt>Kennwort</dt><dd><b style="font-family:Consolas,monospace;user-select:all">${esc(std)}</b></dd></dl><p>Bei der ersten Anmeldung muss ein eigenes Kennwort festgelegt werden.</p>`);return}
+ render();
+ if(r.grund&&r.grund!=='gesperrt'){toast('Konto konnte nicht angelegt werden: '+r.grund,true);return}
+ openDlg({title:'Zugang anlegen – noch ein Schritt',body:`<div class="hint info">${nachErfassung?'Die Führungskraft ist in der Datenbank erfasst und für den Datenzugriff freigegeben. ':''}Das Anmeldekonto konnte nicht automatisch angelegt werden, weil in Firebase die Registrierung neuer Konten ausgeschaltet ist.</div>
+  <p><b>Dauerhaft lösen (empfohlen):</b> Firebase-Konsole › Authentication › Einstellungen › <b>Nutzeraktionen</b> › „Erstellen (Registrierung) aktivieren“ einschalten. Danach legt BeLIS Konten selbst an. Unbefugte erhalten trotzdem keinen Datenzugriff – das regelt die Zugriffsliste.</p>
+  <p><b>Oder jetzt von Hand:</b> Authentication › Users › <b>Nutzer hinzufügen</b> mit E-Mail <code style="user-select:all">${esc(mail)}</code> und Kennwort <code style="user-select:all">${esc(std)}</code>.</p>`,buttons:[{label:'OK',pri:true}]});
+}
 function firestoreRules(){
- const mails=S.personal.filter(p=>rolleOf(p)&&p.status!=='ausgeschieden'&&!(p.acc&&p.acc.gesperrt)).map(p=>loginMail(p.nachname));
+ const bl=S.personal.filter(p=>rolleOf(p)==='Behördenleitung'&&p.status!=='ausgeschieden').map(p=>loginMail(p.nachname));
  return `rules_version = '2';
 // BeLIS – Zugriffsregeln (erzeugt am ${fmtD(today())})
-// Nur die aufgeführten Konten dürfen lesen und schreiben.
+// Wer zugreifen darf, steht in der Zugriffsliste "zugang/liste". BeLIS pflegt sie automatisch
+// aus den Personalakten (Ämter mit Zugang, nicht gesperrt/suspendiert/ausgeschieden).
+// Die Gründungskonten der Behördenleitung haben immer Zugriff, damit die Liste angelegt werden kann.
 service cloud.firestore {
   match /databases/{database}/documents {
+    function gruendung() {
+      return request.auth.token.email in [
+${bl.map(m=>"        '"+m+"'").join(',\n')}
+      ];
+    }
+    function liste() {
+      return get(/databases/$(database)/documents/zugang/liste).data;
+    }
+    function hatListe() {
+      return exists(/databases/$(database)/documents/zugang/liste);
+    }
     function berechtigt() {
       return request.auth != null
-        && request.auth.token.email in [
-${mails.map(m=>"          '"+m+"'").join(',\n')}
-        ];
+        && (gruendung() || (hatListe() && request.auth.token.email in liste().alle));
+    }
+    function behoerdenleitung() {
+      return request.auth != null
+        && (gruendung() || (hatListe() && request.auth.token.email in liste().bl));
     }
     match /belis/{dok} {
       allow read, write: if berechtigt();
+    }
+    match /zugang/liste {
+      allow read: if berechtigt();
+      allow write: if behoerdenleitung();
     }
     match /{rest=**} {
       allow read, write: if false;
@@ -2005,7 +2073,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.4.2 (Build 26.10.02)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.4.3 (Build 26.10.02)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */

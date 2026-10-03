@@ -1,19 +1,36 @@
 rules_version = '2';
 // BeLIS – Zugriffsregeln
-// Nur die aufgeführten Konten dürfen lesen und schreiben.
-// Neue Führungskräfte: in BeLIS › Benutzerverwaltung › „Zugriffsregeln erzeugen“.
+// Wer zugreifen darf, steht in der Zugriffsliste "zugang/liste". BeLIS pflegt sie automatisch
+// aus den Personalakten (Ämter mit Zugang, nicht gesperrt/suspendiert/ausgeschieden).
+// Die Gründungskonten der Behördenleitung haben immer Zugriff, damit die Liste angelegt werden kann.
 service cloud.firestore {
   match /databases/{database}/documents {
+    function gruendung() {
+      return request.auth.token.email in [
+        'richter@belis-22d63.firebaseapp.com',
+        'lehmann@belis-22d63.firebaseapp.com'
+      ];
+    }
+    function liste() {
+      return get(/databases/$(database)/documents/zugang/liste).data;
+    }
+    function hatListe() {
+      return exists(/databases/$(database)/documents/zugang/liste);
+    }
     function berechtigt() {
       return request.auth != null
-        && request.auth.token.email in [
-          'richter@belis-22d63.firebaseapp.com',
-          'lehmann@belis-22d63.firebaseapp.com',
-          'ottermann@belis-22d63.firebaseapp.com'
-        ];
+        && (gruendung() || (hatListe() && request.auth.token.email in liste().alle));
+    }
+    function behoerdenleitung() {
+      return request.auth != null
+        && (gruendung() || (hatListe() && request.auth.token.email in liste().bl));
     }
     match /belis/{dok} {
       allow read, write: if berechtigt();
+    }
+    match /zugang/liste {
+      allow read: if berechtigt();
+      allow write: if behoerdenleitung();
     }
     match /{rest=**} {
       allow read, write: if false;
