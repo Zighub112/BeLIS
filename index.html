@@ -226,12 +226,19 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
 .kmore{font-size:10.5px;color:var(--tx3)}
 .kB{background:#dbe8f6;border-color:#1f5f99;color:#163f66}.kP{background:#efe3f5;border-color:#7a3c99;color:#4d2462}.kE{background:#fbe1df;border-color:#b3261e;color:#7a1b15}
 .kA{background:#dff0e2;border-color:#2e7d32;color:#1d5220}.kV{background:#fdf0d4;border-color:#a86400;color:#6b4000}.kX{background:#e0f1f2;border-color:#0f6f73;color:#0b4b4e}.kS{background:#eceff2;border-color:#77808b;color:#3b434c}
+/* Personenfarben */
+.pchip{display:inline-flex;align-items:center;gap:4px;padding:0 6px 0 4px;border:1px solid;border-radius:9px;font-size:11px;line-height:16px;white-space:nowrap}
+.pchip i,.pdot{display:inline-block;width:9px;height:9px;border-radius:50%;flex:none}
+.pdot{margin-right:5px;vertical-align:middle}
+.tbar{display:inline-block;width:4px;height:13px;border-radius:2px;margin-right:6px;vertical-align:-2px}
+.fsw{width:30px;height:30px;border:2px solid transparent;border-radius:4px;cursor:pointer;color:#fff;font-weight:700;text-shadow:0 0 2px #000}
+.fsw.act{border-color:var(--tx);outline:2px solid var(--panel);outline-offset:-4px}
 /* Notizen */
 .notes{display:grid;grid-template-columns:minmax(220px,300px) 1fr;gap:10px;min-height:420px}
 .nlist{display:flex;flex-direction:column;gap:3px;overflow:auto;max-height:70vh}
-.nitem{display:flex;flex-direction:column;align-items:stretch;text-align:left;background:var(--field);border:1px solid var(--line2);border-left:3px solid transparent;padding:5px 8px;cursor:pointer;gap:1px}
+.nitem{display:flex;flex-direction:column;align-items:stretch;text-align:left;background:var(--field);border:1px solid var(--line2);border-left:5px solid transparent;padding:5px 8px;cursor:pointer;gap:1px}
 .nitem:hover{background:var(--hover)}
-.nitem.act{border-left-color:var(--selline);background:var(--sel)}
+.nitem.act{background:var(--sel);outline:1px solid var(--selline);outline-offset:-1px}
 .nitem span{color:var(--tx2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nitem small{color:var(--tx3);font-size:10px}
 .ned{display:flex;flex-direction:column;border:1px solid var(--line);background:var(--panel);padding:8px}
@@ -325,7 +332,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.4.1 (Build 26.10.02)</div>
+    <div class="hm">BeLIS 5.4.2 (Build 26.10.02)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -856,6 +863,7 @@ function finishLogin(p){
  const rolle=rolleOf(p);
  USER={pid:p.id,kennung:p.nachname.toUpperCase(),name:p.nachname+', '+p.dg,rolle,wb:wbOf(p.dienststelle),login:new Date().toISOString()};
  p.acc=p.acc||{};p.acc.last=USER.login;save('personal');
+ try{ensureFarben()}catch(e){}
  $('#login').style.display='none';
  CUR='cockpit';
  log('Anmeldung',rolle+(rolle==='Leitung Wachbezirk'?' – '+USER.wb:''));render();
@@ -1029,7 +1037,7 @@ V.cockpit={t:'Übersicht',
    ${wv.length?`<ul class="wv">${wv.slice(0,12).map(w=>`<li><span class="d" style="${w.d<t?'color:var(--err);font-weight:600':w.d===t?'color:var(--warn);font-weight:600':''}">${fmtD(w.d)}</span><a data-act="gowv" data-id="${w.go}|${w.id}">${esc(w.t)}</a></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Keine Wiedervorlagen fällig.</div>'}
   </fieldset>
   <fieldset><legend>Termine – heute und die nächsten 7 Tage</legend>
-   ${(()=>{const L=termineIm(t,addDays(t,7),true);return L.length?`<ul class="wv">${L.slice(0,10).map(o=>`<li><span class="d" style="${o.d===t?'color:var(--warn);font-weight:600':''}">${o.d===t?'heute':WT[new Date(o.d+'T12:00').getDay()]+' '+fmtD(o.d).slice(0,6)}</span><span style="width:84px;flex:none;color:var(--tx2)">${esc(o.t.ganztag?'ganztägig':(o.t.von||''))}</span><a data-act="termin" data-id="${o.t.id}">${esc(o.t.titel)}</a>${o.t.ort?`<span style="margin-left:auto;color:var(--tx3)">${esc(o.t.ort)}</span>`:''}</li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Keine Termine in den nächsten 7 Tagen.</div>'})()}
+   ${(()=>{const L=termineIm(t,addDays(t,7),true);return L.length?`<ul class="wv">${L.slice(0,10).map(o=>`<li><span class="d" style="${o.d===t?'color:var(--warn);font-weight:600':''}">${o.d===t?'heute':WT[new Date(o.d+'T12:00').getDay()]+' '+fmtD(o.d).slice(0,6)}</span><span style="width:84px;flex:none;color:var(--tx2)">${esc(o.t.ganztag?'ganztägig':(o.t.von||''))}</span>${pdot(terminPerson(o.t))}<a data-act="termin" data-id="${o.t.id}">${esc(o.t.titel)}</a>${o.t.ort?`<span style="margin-left:auto;color:var(--tx3)">${esc(o.t.ort)}</span>`:''}</li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Keine Termine in den nächsten 7 Tagen.</div>'})()}
   </fieldset>
   <fieldset><legend>Meine offenen Aufgaben</legend>
    ${(()=>{const L=S.todos.filter(x=>!x.erledigt&&betrifftMich(x.zustaendig)).sort((a,b)=>(a.faellig||'9')<(b.faellig||'9')?-1:1);return L.length?`<ul class="wv">${L.slice(0,8).map(x=>`<li><input type="checkbox" data-act="todochk" data-id="${x.id}" style="margin:0"><span class="d" style="${x.faellig&&x.faellig<t?'color:var(--err);font-weight:600':''}">${x.faellig?fmtD(x.faellig):'–'}</span><a data-act="todo" data-id="${x.id}">${esc(x.titel)}</a>${x.prio==='hoch'?'<span class="st err" style="margin-left:auto">hoch</span>':''}</li>`).join('')}</ul>${L.length>8?`<div style="color:var(--tx3)">… und ${L.length-8} weitere</div>`:''}`:'<div style="color:var(--tx3)">Keine offenen Aufgaben.</div>'})()}
@@ -1521,11 +1529,12 @@ V.benutzer={t:'Benutzerverwaltung',editLabel:'Personalakte',neuLabel:'Führungsk
  count:()=>S.personal.filter(p=>rolleOf(p)&&p.status!=='ausgeschieden'&&!(p.acc||{}).hash).length||'',
  render(){const rows=S.personal.filter(p=>rolleOf(p)&&p.status!=='ausgeschieden').sort((a,b)=>rankIdx(b.dg)-rankIdx(a.dg));
   return `<div class="hint info">Die Anmeldung erfolgt mit <b>Nachname und Kennwort</b> über Firebase. Für jede Führungskraft wird in der Firebase-Konsole ein Konto mit der unten angezeigten <b>Anmeldekennung</b> angelegt und die Kennung in die Zugriffsregeln eingetragen („Zugriffsregeln erzeugen“). BeLIS prüft zusätzlich das Amt laut Personalakte: <b>${esc(csv(S.meta.rollenBL).join(', '))}</b> → Behördenleitung, <b>${esc(csv(S.meta.rollenLW).join(', '))}</b> → Leitung Wachbezirk.</div>`+
-  grid('benutzer',[{l:'Benutzer (Nachname)',f:r=>'<b>'+esc(r.nachname)+'</b>, '+esc(r.vorname)},{l:'Amt',f:r=>esc(r.dg)},{l:'Rolle',f:r=>esc(rolleOf(r))},{l:'Zuständigkeit',f:r=>rolleOf(r)==='Behördenleitung'?'Gesamtbehörde':esc(wbOf(r.dienststelle))},{l:'Anmeldekennung (Firebase)',f:r=>esc(loginMail(r.nachname)),mono:1},{l:'Konto',f:r=>{const a=r.acc||{};return a.gesperrt?stBadge('gesperrt'):a.must?'<span class="st warn">Kennwortwechsel verlangt</span>':a.last?'<span class="st ok">aktiv</span>':'<span class="st n">noch nicht angemeldet</span>'}},{l:'Letzte Anmeldung',f:r=>fmtTs((r.acc||{}).last)}],rows,'Keine Bediensteten mit zugangsberechtigtem Amt.')},
+  grid('benutzer',[{l:'Farbe',f:r=>`<i class="pdot" style="background:${farbe(r.id)};width:14px;height:14px"></i>`,w:'44px'},{l:'Benutzer (Nachname)',f:r=>'<b>'+esc(r.nachname)+'</b>, '+esc(r.vorname)},{l:'Amt',f:r=>esc(r.dg)},{l:'Rolle',f:r=>esc(rolleOf(r))},{l:'Zuständigkeit',f:r=>rolleOf(r)==='Behördenleitung'?'Gesamtbehörde':esc(wbOf(r.dienststelle))},{l:'Anmeldekennung (Firebase)',f:r=>esc(loginMail(r.nachname)),mono:1},{l:'Konto',f:r=>{const a=r.acc||{};return a.gesperrt?stBadge('gesperrt'):a.must?'<span class="st warn">Kennwortwechsel verlangt</span>':a.last?'<span class="st ok">aktiv</span>':'<span class="st n">noch nicht angemeldet</span>'}},{l:'Letzte Anmeldung',f:r=>fmtTs((r.acc||{}).last)}],rows,'Keine Bediensteten mit zugangsberechtigtem Amt.')},
  edit(id){personalakte(id)},
  extra:[
   {l:'Zugang einrichten',ic:'help',sel:1,fn:id=>{const p=person(id);const m=loginMail(p.nachname);
    infoDlg('Zugang einrichten – '+p.nachname,`<p style="margin-top:0">So erhält <b>${esc(p.dg)} ${esc(p.nachname)}</b> Zugang:</p><ol style="padding-left:18px;margin:0 0 8px"><li>Firebase-Konsole › <b>Authentication</b> › <b>Nutzer hinzufügen</b></li><li>E-Mail: <code style="user-select:all">${esc(m)}</code></li><li>Ein Initialkennwort vergeben (mind. 8 Zeichen, Buchstaben und Ziffern) und vertraulich übermitteln.</li><li>Hier „Kennwortwechsel verlangen“ wählen – beim ersten Anmelden muss das Kennwort geändert werden.</li><li>„Zugriffsregeln erzeugen“ und die Regeln in Firestore › <b>Regeln</b> veröffentlichen.</li></ol><p>Angemeldet wird mit dem Nachnamen <b>${esc(p.nachname)}</b> und dem Kennwort.</p>`)}},
+  {l:'Farbe festlegen',ic:'edit',sel:1,fn:id=>farbeDlg(person(id))},
   {l:'Kennwort zurücksetzen',ic:'ref',sel:1,fn:id=>kennwortZuruecksetzen(person(id))},
   {l:'Kennwortwechsel verlangen',ic:'edit',sel:1,fn:id=>{const p=person(id);p.acc=p.acc||{};p.acc.must=!p.acc.must;save('personal');log(p.acc.must?'Kennwortwechsel verlangt':'Kennwortwechsel zurückgenommen',p.nachname);render()}},
   {l:'Sperren / Entsperren',ic:'del',sel:1,fn:id=>{const p=person(id);if(p.id===USER.pid){toast('Der eigene Zugang kann nicht gesperrt werden.',true);return}p.acc=p.acc||{};p.acc.gesperrt=!p.acc.gesperrt;save('personal');log(p.acc.gesperrt?'Zugang gesperrt':'Zugang entsperrt',p.nachname);render();
@@ -1611,13 +1620,29 @@ function orgMove(id,d){const L=S.org.slice().sort((a,b)=>a.sort-b.sort);const i=
 /* ================= Gemeinsame Hilfen ================= */
 function monday(d){const x=new Date(d);const n=(x.getDay()+6)%7;x.setDate(x.getDate()-n);x.setHours(12,0,0,0);return x}
 const fuehrung=()=>S.personal.filter(p=>rolleOf(p)&&p.status!=='ausgeschieden').sort((a,b)=>rankIdx(b.dg)-rankIdx(a.dg));
+const PALETTE=['#1f6fb2','#c0392b','#2e8b57','#d4800b','#7b4fa8','#0f8a8f','#c2185b','#8a5a2b','#5c6bc0','#689f38'];
+const farbe=id=>{if(!id||id==='alle')return '#77808b';const p=person(id);return (p&&p.farbe)||'#77808b'};
+const hexA=(h,a)=>{const m=String(h).replace('#','');const n=parseInt(m.length===3?m.split('').map(c=>c+c).join(''):m,16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`};
+const pchip=id=>`<span class="pchip" style="background:${hexA(farbe(id),.16)};border-color:${farbe(id)}"><i style="background:${farbe(id)}"></i>${esc(kurzName(id))}</span>`;
+const pdot=id=>`<i class="pdot" style="background:${farbe(id)}" title="${esc(kurzName(id))}"></i>`;
+/* Jede Führungskraft erhält dauerhaft eine eigene Farbe */
+function ensureFarben(){const F=fuehrung();const used=new Set(F.map(p=>p.farbe).filter(Boolean));let ch=false;
+ F.forEach(p=>{if(!p.farbe){p.farbe=PALETTE.find(c=>!used.has(c))||PALETTE[used.size%PALETTE.length];used.add(p.farbe);ch=true}});if(ch)save('personal')}
+function farbeDlg(p){
+ openDlg({title:'Farbe – '+[p.titel,p.vorname,p.nachname].filter(Boolean).join(' '),size:'small',body:`<p style="margin-top:0">Diese Farbe kennzeichnet ${esc(p.nachname)} im Terminkalender, in den Aufgaben und bei den Notizen.</p>
+  <div id="fSw" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${PALETTE.map(c=>{const by=fuehrung().find(x=>x.farbe===c&&x.id!==p.id);return `<button class="fsw${p.farbe===c?' act':''}" data-c="${c}" style="background:${c}" title="${by?'bereits: '+esc(by.nachname):c}">${by?esc(by.nachname[0]):''}</button>`}).join('')}</div>
+  <div class="form"><label>Eigene Farbe</label><input type="color" id="fCol" value="${p.farbe||PALETTE[0]}" style="height:28px;padding:1px"></div>`,
+  onOpen:a=>{a.qa('[data-c]').forEach(b=>b.onclick=()=>{a.q('#fCol').value=b.dataset.c;a.qa('[data-c]').forEach(x=>x.classList.toggle('act',x===b))})},
+  buttons:[{label:'Übernehmen',pri:true,fn:a=>{const c=a.q('#fCol').value;const by=fuehrung().find(x=>x.farbe&&x.farbe.toLowerCase()===c.toLowerCase()&&x.id!==p.id);
+   if(by){toast('Diese Farbe ist bereits '+by.nachname+' zugeordnet.',true);return false}p.farbe=c;save('personal');log('Farbe geändert',p.nachname+': '+c);render()}},{label:'Abbrechen'}]});
+}
 const kurzName=id=>{if(id==='alle')return 'alle';const p=person(id);return p?p.nachname:'–'};
 const MONATE=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 const TERM_KAT={'Dienstbesprechung':'kB','Personalgespräch':'kP','Einsatz / Lage':'kE','Ausbildung':'kA','Veranstaltung':'kV','Termin extern':'kX','Sonstiges':'kS'};
 function teilnehmerHtml(sel){sel=sel||['alle'];
  return `<div class="form" style="margin-top:5px"><label style="align-self:start;padding-top:2px">Teilnehmende</label><div id="tnBox" style="display:flex;flex-wrap:wrap;gap:4px 14px">
   <label style="white-space:nowrap"><input type="checkbox" value="alle"${sel.includes('alle')?' checked':''}> alle</label>
-  ${fuehrung().map(p=>`<label style="white-space:nowrap"><input type="checkbox" value="${p.id}"${sel.includes(p.id)?' checked':''}> ${esc(p.dg)} ${esc(p.nachname)}</label>`).join('')}</div></div>`}
+  ${fuehrung().map(p=>`<label style="white-space:nowrap"><input type="checkbox" value="${p.id}"${sel.includes(p.id)?' checked':''}> ${pdot(p.id)}${esc(p.dg)} ${esc(p.nachname)}</label>`).join('')}</div></div>`}
 function readTeilnehmer(a){const v=a.qa('#tnBox input:checked').map(i=>i.value);return v.includes('alle')||!v.length?['alle']:v}
 const betrifftMich=list=>!list||list.includes('alle')||list.includes(USER.pid);
 
@@ -1640,6 +1665,9 @@ function termineIm(von,bis,nurMeine){
  const L=[];S.termine.forEach(t=>{if(nurMeine&&!betrifftMich(t.teilnehmer))return;terminTage(t,von,bis).forEach(d=>L.push({t,d}))});
  return L.sort((a,b)=>(a.d+(a.t.ganztag?'00':a.t.von||'99'))<(b.d+(b.t.ganztag?'00':b.t.von||'99'))?-1:1);
 }
+/* Farbe eines Termins: Person, für die er gilt – bei „alle“ oder mehreren die anlegende Person */
+const terminPerson=t=>{const tn=t.teilnehmer||['alle'];return tn.length===1&&tn[0]!=='alle'?tn[0]:t.von_pid};
+const chipStyle=t=>fil('fb','person')==='art'?'':(()=>{const c=farbe(terminPerson(t));return ` style="background:${hexA(c,.18)};border-left-color:${c};color:inherit"`})();
 const zeitTxt=t=>t.ganztag?'ganztägig':(t.von||'')+(t.bis?'–'+t.bis:'')+(t.von?' Uhr':'');
 V.kalender={t:'Terminkalender',neuLabel:'Neuer Termin',
  count:()=>{const n=termineIm(today(),today(),true).length;return n||''},
@@ -1651,16 +1679,17 @@ V.kalender={t:'Terminkalender',neuLabel:'Neuer Termin',
   const occ=termineIm(start,end,nur);const by={};occ.forEach(o=>(by[o.d]=by[o.d]||[]).push(o));
   if(!KAL.sel||KAL.sel.slice(0,7)!==`${KAL.y}-${pad(KAL.m+1)}`)KAL.sel=(t0.slice(0,7)===`${KAL.y}-${pad(KAL.m+1)}`)?t0:`${KAL.y}-${pad(KAL.m+1)}-01`;
   let h=`<div class="filterbar"><b style="font-size:14px">${MONATE[KAL.m]} ${KAL.y}</b><label style="margin-left:14px">Anzeige</label><select data-fil="nur" style="width:auto">${opts([{v:'alle',l:'alle Termine'},{v:'meine',l:'nur meine Termine'}],nur?'meine':'alle')}</select>
-   <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">${Object.keys(TERM_KAT).map(k=>`<span class="kchip ${TERM_KAT[k]}" style="cursor:default">${esc(k)}</span>`).join('')}</span></div>
+   <label>Farbe nach</label><select data-fil="fb" style="width:auto">${opts([{v:'person',l:'Person'},{v:'art',l:'Art des Termins'}],fil('fb','person'))}</select>
+   <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">${fil('fb','person')==='art'?Object.keys(TERM_KAT).map(k=>`<span class="kchip ${TERM_KAT[k]}" style="cursor:default">${esc(k)}</span>`).join(''):fuehrung().map(p=>pchip(p.id)).join('')}</span></div>
   <div class="tw"><table class="kal"><thead><tr><th class="kw">KW</th>${['Mo','Di','Mi','Do','Fr','Sa','So'].map((d,i)=>`<th class="${i>4?'we':''}">${d}</th>`).join('')}</tr></thead><tbody>`;
   for(let w=start;w<=end;w=addDays(w,7)){
    h+=`<tr><td class="kw">${weekNo(new Date(w+'T12:00'))}</td>`;
    for(let i=0;i<7;i++){const d=addDays(w,i);const L=by[d]||[];const fremd=d.slice(5,7)!==pad(KAL.m+1);
-    h+=`<td class="kd${fremd?' fremd':''}${i>4?' we':''}${d===t0?' heute':''}${d===KAL.sel?' sel':''}" data-kd="${d}"><div class="kn">${+d.slice(8)}</div>${L.slice(0,3).map(o=>`<div class="kchip ${TERM_KAT[o.t.kat]||'kS'}" data-kt="${o.t.id}" title="${esc(zeitTxt(o.t)+' – '+o.t.titel)}">${o.t.ganztag?'':esc(o.t.von||'')+' '}${esc(o.t.titel)}</div>`).join('')}${L.length>3?`<div class="kmore">+${L.length-3} weitere</div>`:''}</td>`}
+    h+=`<td class="kd${fremd?' fremd':''}${i>4?' we':''}${d===t0?' heute':''}${d===KAL.sel?' sel':''}" data-kd="${d}"><div class="kn">${+d.slice(8)}</div>${L.slice(0,3).map(o=>`<div class="kchip ${TERM_KAT[o.t.kat]||'kS'}"${chipStyle(o.t)} data-kt="${o.t.id}" title="${esc(zeitTxt(o.t)+' – '+o.t.titel)}">${o.t.ganztag?'':esc(o.t.von||'')+' '}${esc(o.t.titel)}</div>`).join('')}${L.length>3?`<div class="kmore">+${L.length-3} weitere</div>`:''}</td>`}
    h+='</tr>'}
   h+=`</tbody></table></div>`;
   const tag=(by[KAL.sel]||[]);
-  h+=`<fieldset style="margin-top:10px"><legend>${WT[new Date(KAL.sel+'T12:00').getDay()]}, ${fmtD(KAL.sel)}</legend>${tag.length?`<ul class="wv">${tag.map(o=>`<li><span class="d" style="width:110px">${esc(zeitTxt(o.t))}</span><span class="kchip ${TERM_KAT[o.t.kat]||'kS'}" style="flex:none">${esc(o.t.kat||'Sonstiges')}</span><a data-act="termin" data-id="${o.t.id}"><b>${esc(o.t.titel)}</b></a><span style="color:var(--tx3)">${o.t.ort?esc(o.t.ort)+' · ':''}${esc((o.t.teilnehmer||['alle']).map(kurzName).join(', '))}${o.t.wdh&&o.t.wdh!=='keine'?' · '+esc(o.t.wdh):''}</span></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Keine Termine. Doppelklick auf einen Tag legt einen Termin an.</div>'}</fieldset>`;
+  h+=`<fieldset style="margin-top:10px"><legend>${WT[new Date(KAL.sel+'T12:00').getDay()]}, ${fmtD(KAL.sel)}</legend>${tag.length?`<ul class="wv">${tag.map(o=>`<li><span class="d" style="width:110px">${esc(zeitTxt(o.t))}</span><span class="kchip ${TERM_KAT[o.t.kat]||'kS'}" style="flex:none">${esc(o.t.kat||'Sonstiges')}</span>${pdot(terminPerson(o.t))}<a data-act="termin" data-id="${o.t.id}"><b>${esc(o.t.titel)}</b></a><span style="color:var(--tx3)">${o.t.ort?esc(o.t.ort)+' · ':''}</span><span>${(o.t.teilnehmer||['alle']).map(pchip).join(' ')}</span><span style="color:var(--tx3)">${o.t.wdh&&o.t.wdh!=='keine'?' · '+esc(o.t.wdh):''}</span></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Keine Termine. Doppelklick auf einen Tag legt einen Termin an.</div>'}</fieldset>`;
   return h;
  },
  after(){document.querySelectorAll('#vBody [data-kd]').forEach(td=>{td.onclick=e=>{const c=e.target.closest('[data-kt]');if(c){terminDlg(c.dataset.kt);return}KAL.sel=td.dataset.kd;render()};td.ondblclick=e=>{if(e.target.closest('[data-kt]'))return;terminDlg(null,td.dataset.kd)}})},
@@ -1698,11 +1727,11 @@ V.todo={t:'Aufgaben',neuLabel:'Neue Aufgabe',editLabel:'Bearbeiten',delAll:true,
   if(!SORT.todo)SORT.todo={i:2,d:1};
   return `<div class="filterbar"><label>Anzeige</label><select data-fil="a" style="width:auto">${opts([{v:'meine',l:'meine offenen Aufgaben'},{v:'alle',l:'alle offenen Aufgaben'},{v:'erledigt',l:'erledigte Aufgaben'},{v:'gesamt',l:'alle Aufgaben'}],a)}</select><span style="color:var(--tx3)">Häkchen anklicken = erledigt. Fällige Aufgaben erscheinen auch unter Wiedervorlagen.</span></div>`+
   grid('todo',[{l:'',f:r=>`<input type="checkbox" data-tchk="${r.id}"${r.erledigt?' checked':''} title="erledigt" style="margin:0">`,w:'24px',s:r=>r.erledigt?1:0},
-   {l:'Aufgabe',f:r=>`<span style="${r.erledigt?'text-decoration:line-through;color:var(--tx3)':''}"><b>${esc(r.titel)}</b>${r.text?` <span style="color:var(--tx3)">– ${esc(r.text.split('\n')[0].slice(0,80))}</span>`:''}</span>`,s:r=>r.titel},
+   {l:'Aufgabe',f:r=>`<span class="tbar" style="background:${farbe((r.zustaendig||['alle']).length===1?(r.zustaendig||['alle'])[0]:'alle')}"></span><span style="${r.erledigt?'text-decoration:line-through;color:var(--tx3)':''}"><b>${esc(r.titel)}</b>${r.text?` <span style="color:var(--tx3)">– ${esc(r.text.split('\n')[0].slice(0,80))}</span>`:''}</span>`,s:r=>r.titel},
    {l:'Fällig',f:r=>r.faellig?`<span style="${!r.erledigt&&r.faellig<t0?'color:var(--err);font-weight:600':!r.erledigt&&r.faellig===t0?'color:var(--warn);font-weight:600':''}">${fmtD(r.faellig)}</span>`:'',s:r=>r.faellig||'9999'},
    {l:'Priorität',f:r=>`<span class="st ${PRIO[r.prio]||'n'}">${esc(r.prio||'normal')}</span>`,s:r=>({hoch:0,normal:1,niedrig:2})[r.prio]??1},
-   {l:'Zuständig',f:r=>esc((r.zustaendig||['alle']).map(kurzName).join(', '))},
-   {l:'Angelegt von',f:r=>esc(kurzName(r.von_pid))},
+   {l:'Zuständig',f:r=>(r.zustaendig||['alle']).map(pchip).join(' '),s:r=>(r.zustaendig||['alle']).map(kurzName).join()},
+   {l:'Angelegt von',f:r=>pdot(r.von_pid)+esc(kurzName(r.von_pid))},
    {l:'Erledigt',f:r=>r.erledigt?fmtD(r.erledigtAm)+(r.erledigtVon?' ('+esc(kurzName(r.erledigtVon))+')':''):''}],rows,a==='meine'?'Keine offenen Aufgaben. 👍':'Keine Aufgaben.')},
  after(){document.querySelectorAll('#vBody [data-tchk]').forEach(c=>{c.onclick=e=>e.stopPropagation();c.onchange=()=>todoToggle(c.dataset.tchk)})},
  neu(){todoDlg()},
@@ -1734,8 +1763,8 @@ V.notizen={t:'Notizen',neuLabel:'Neue Notiz',delAll:true,
   if(!NOTE_SEL||!L.find(n=>n.id===NOTE_SEL))NOTE_SEL=L.length?L[0].id:null;
   const n=L.find(x=>x.id===NOTE_SEL);const mine=n&&(n.von_pid===USER.pid||isBL());
   return `<div class="notes"><div class="nlist"><input type="search" data-fil="q" value="${esc(fil('q'))}" placeholder="Notizen durchsuchen" style="margin-bottom:6px">
-   ${L.map(x=>`<button class="nitem${x.id===NOTE_SEL?' act':''}" data-note="${x.id}"><b>${x.pin?'📌 ':''}${esc(x.titel||'(ohne Titel)')}</b><span>${esc(String(x.text||'').replace(/\s+/g,' ').slice(0,70))}</span><small>${fmtTs(x.geaendert)} · ${esc(kurzName(x.von_pid))} · ${x.vis==='alle'?'für alle':'privat'}</small></button>`).join('')||'<div style="color:var(--tx3);padding:8px">Keine Notizen. Mit „Neue Notiz“ (F2) anlegen.</div>'}</div>
-   <div class="ned" id="noteEd">${n?`<div class="filterbar" style="margin-bottom:6px"><input type="text" id="nTit" value="${esc(n.titel)}" placeholder="Titel" style="flex:1;font-weight:600"${mine?'':' readonly'}>
+   ${L.map(x=>`<button class="nitem${x.id===NOTE_SEL?' act':''}" data-note="${x.id}" style="border-left-color:${farbe(x.von_pid)};${x.id===NOTE_SEL?'':`background:${hexA(farbe(x.von_pid),.06)}`}"><b>${x.pin?'📌 ':''}${esc(x.titel||'(ohne Titel)')}</b><span>${esc(String(x.text||'').replace(/\s+/g,' ').slice(0,70))}</span><small>${pdot(x.von_pid)}${fmtTs(x.geaendert)} · ${esc(kurzName(x.von_pid))} · ${x.vis==='alle'?'für alle':'privat'}</small></button>`).join('')||'<div style="color:var(--tx3);padding:8px">Keine Notizen. Mit „Neue Notiz“ (F2) anlegen.</div>'}</div>
+   <div class="ned" id="noteEd"${n?` style="border-top:4px solid ${farbe(n.von_pid)}"`:''}>${n?`<div class="filterbar" style="margin-bottom:6px"><input type="text" id="nTit" value="${esc(n.titel)}" placeholder="Titel" style="flex:1;font-weight:600"${mine?'':' readonly'}>
     <select id="nVis" style="width:auto"${n.von_pid===USER.pid?'':' disabled'}>${opts([{v:'privat',l:'privat (nur ich)'},{v:'alle',l:'für alle sichtbar'}],n.vis)}</select>
     <label style="white-space:nowrap"><input type="checkbox" id="nPin"${n.pin?' checked':''}${mine?'':' disabled'}> anheften</label></div>
     <textarea id="nTxt" style="flex:1;min-height:340px;font:13px/1.5 'Segoe UI',Tahoma,sans-serif"${mine?'':' readonly'} placeholder="Notiz …">${esc(n.text)}</textarea>
@@ -1939,7 +1968,7 @@ function printDoc(html,title){
 
 /* ================= Menü & Tastatur ================= */
 const MENU=[
- ['Datei',[['Kennwort ändern …','',()=>changePw(person(USER.pid),false)],['Datensicherung …','',()=>go('sicherung')],['PDF erstellen','F8',()=>tbAct('print')],'-',['Abmelden','Strg+Q',()=>logout()]]],
+ ['Datei',[['Kennwort ändern …','',()=>changePw(person(USER.pid),false)],['Meine Farbe …','',()=>farbeDlg(person(USER.pid))],['Datensicherung …','',()=>go('sicherung')],['PDF erstellen','F8',()=>tbAct('print')],'-',['Abmelden','Strg+Q',()=>logout()]]],
  ['Bearbeiten',[['Neu','F2',()=>tbAct('neu')],['Öffnen / Bearbeiten','Enter',()=>tbAct('edit')],['Löschen','Entf',()=>tbAct('del')],'-',['Suchen','F3',()=>{const s=document.querySelector('#vBody input[type=search]');if(s)s.focus();else toast('In dieser Ansicht ist keine Suche verfügbar.')}]]],
  ['Ansicht',[...['cockpit','kalender','todo','notizen','wv','antraege','personal','org','massnahmen','disziplinar','bewerbungen','schriftgut'].map((id,i)=>[{cockpit:'Übersicht',kalender:'Terminkalender',todo:'Aufgaben',notizen:'Notizen',personal:'Personalverzeichnis',wv:'Wiedervorlagen',antraege:'Anträge',org:'Organisation',massnahmen:'Personalmaßnahmen',disziplinar:'Disziplinarverfahren',bewerbungen:'Bewerbungen hD',schriftgut:'Schriftgut / Erlasse'}[id],'',()=>go(id)]),'-',['Darstellung: hell','',()=>setTheme('light')],['Darstellung: dunkel','',()=>setTheme('dark')],['Darstellung: Systemvorgabe','',()=>setTheme('')]]],
  ['Vorgang',[['Einstellung …','',()=>einstellen()],['Beförderung (hD) …','',()=>{if(isBL())pickPerson('Beförderung im höheren Dienst',befoerdern);else pickPerson('Antrag auf Beförderung',pid=>antragNeu(pid,'Beförderung'))}],['Versetzung …','',()=>pickPerson('Versetzung',versetzen)],['Entlassung …','',()=>pickPerson('Entlassung',entlassen)],'-',['Status ändern …','',()=>pickPerson('Dienststatus',statusAendern)],['Antrag stellen …','',()=>pickPerson('Antrag stellen',pid=>antragNeu(pid))],['Personalakte öffnen …','',()=>pickPerson('Personalakte öffnen',id=>personalakte(id),{all:1,self:1,ex:1,ro:1})],'-',['Termin anlegen …','',()=>terminDlg(null,today())],['Aufgabe anlegen …','',()=>todoDlg()],['Notiz anlegen …','',()=>{go('notizen');V.notizen.neu()}],'-',['Disziplinarverfahren einleiten …','',()=>V.disziplinar.neu()],['Schreiben verfassen …','',()=>V.schriftgut.neu()],['Wiedervorlage …','',()=>V.wv.neu()]]],
@@ -1976,7 +2005,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.4.1 (Build 26.10.02)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.4.2 (Build 26.10.02)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
