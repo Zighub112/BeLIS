@@ -332,7 +332,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.5.3 (Build 26.10.03)</div>
+    <div class="hm">BeLIS 5.5.4 (Build 26.10.03)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -957,7 +957,7 @@ function go(id){if(!navIds().includes(id)){toast('Kein Zugriff: Dieses Modul ist
 function render(){
  if(!USER)return;
  const m=S.meta;const me=person(USER.pid);
- if(me){const r=rolleOf(me);if(!r||me.status!=='aktiv'&&me.status!=='beurlaubt'&&me.status!=='krank gemeldet'||(me.acc&&me.acc.gesperrt)){toast('Ihre Berechtigung ist entfallen. Sie wurden abgemeldet.',true);fbLogout();return}USER.rolle=r;USER.wb=wbOf(me.dienststelle);USER.name=me.nachname+', '+me.dg}
+ if(me){const r=rolleOf(me);if(!r||['suspendiert','ausgeschieden'].includes(me.status)||(me.acc&&me.acc.gesperrt)){toast('Ihre Berechtigung ist entfallen. Sie wurden abgemeldet.',true);fbLogout();return}USER.rolle=r;USER.wb=wbOf(me.dienststelle);USER.name=me.nachname+', '+me.dg}
  if(!navIds().includes(CUR))CUR='cockpit';
  $('#tbBehoerde').textContent='Behördenleitungs-Informationssystem – '+m.behoerde;
  $('#tbUser').textContent=USER.name+' · '+USER.rolle+(isBL()?'':' '+USER.wb.replace(/^Wachbezirk\s*/,''));
@@ -1031,7 +1031,7 @@ function bindGrid(){
 }
 const ACT={};
 const fil=(k,d='')=>(FIL[CUR]&&FIL[CUR][k]!=null)?FIL[CUR][k]:d;
-const ST_MAP={aktiv:'ok',freigegeben:'ok','in Kraft':'ok',abgeschlossen:'n',bestanden:'ok',Zusage:'ok',Eingestellt:'ok',genehmigt:'ok',Ernannt:'ok',besetzt:'ok',vakant:'warn','n. b.':'n',Auswahlgespräch:'info',beurlaubt:'info',geplant:'info',laufend:'info',Entwurf:'n',Eingang:'info',Prüfung:'info',Einstellungstest:'info',Vorstellungsgespräch:'info','in Erprobung':'warn',Anhörung:'warn',eingeleitet:'warn',Ermittlung:'warn',offen:'warn',ausgesetzt:'n','krank gemeldet':'warn',suspendiert:'err',gesperrt:'err',ausgesondert:'n',ausgeschieden:'n',Absage:'n',aufgehoben:'n',eingestellt:'n',abgelehnt:'err',zurückgezogen:'n','nicht bestanden':'err',überfällig:'err',erledigt:'n',inaktiv:'err'};
+const ST_MAP={aktiv:'ok',freigegeben:'ok','in Kraft':'ok',abgeschlossen:'n',bestanden:'ok',Zusage:'ok',Eingestellt:'ok',genehmigt:'ok',Ernannt:'ok',besetzt:'ok',vakant:'warn','n. b.':'n',Auswahlgespräch:'info',beurlaubt:'info',geplant:'info',laufend:'info',Entwurf:'n',Eingang:'info',Prüfung:'info',Einstellungstest:'info',Vorstellungsgespräch:'info','in Erprobung':'warn',Anhörung:'warn',eingeleitet:'warn',Ermittlung:'warn',offen:'warn',ausgesetzt:'n','krank gemeldet':'warn','im Urlaub':'info',abgemeldet:'warn',suspendiert:'err',gesperrt:'err',ausgesondert:'n',ausgeschieden:'n',Absage:'n',aufgehoben:'n',eingestellt:'n',abgelehnt:'err',zurückgezogen:'n','nicht bestanden':'err',überfällig:'err',erledigt:'n',inaktiv:'err'};
 function stBadge(s){return `<span class="st ${ST_MAP[s]||'n'}">${esc(s||'–')}</span>`}
 
 /* ================= Übersicht ================= */
@@ -1041,6 +1041,7 @@ function openDisz(pid){return S.disziplinar.filter(d=>d.pid===pid&&!DISZ_ZU.incl
 function derivedWV(){
  const t=today();const L=[];const sc=pid=>inScope(pid);
  S.disziplinar.forEach(d=>{if(d.frist&&!DISZ_ZU.includes(d.status)&&sc(d.pid))L.push({d:d.frist,t:`Frist Disziplinarverfahren ${d.az} (${pname(d.pid)}) – ${d.status}`,go:'disziplinar',id:d.id})});
+ scopePersons().forEach(p=>{if(ABWESEND.includes(p.status)&&p.statusBis)L.push({d:p.statusBis,t:`Rückkehr erwartet: ${p.dg} ${p.nachname} (${p.status}) – Status prüfen`,go:'akte',id:p.id})});
  if(isBL())S.bewerbungen.forEach(b=>{if(b.status==='Eingang'&&daysBetween(b.eingang,t)>=7)L.push({d:addDays(b.eingang,7),t:`Bewerbung unbearbeitet: ${b.az} ${b.nachname}, ${b.vorname}`,go:'bewerbungen',id:b.id})});
  if(isBL())S.antraege.filter(a=>a.status==='offen').forEach(a=>L.push({d:a.datum,t:`Antrag ${a.az}: ${a.art} ${pname(a.pid)} (${a.summary}) – Entscheidung`,go:'antraege',id:a.id}));
  S.wv.filter(w=>!w.erledigt).forEach(w=>L.push({d:w.datum,t:w.text,go:'wv',id:w.id,man:true}));
@@ -1070,6 +1071,7 @@ V.cockpit={t:'Übersicht',
   <fieldset><legend>Vorgangslage – ${esc(scopeTxt)}</legend><dl class="kv">
    <dt>${isBL()?'Anträge zur Entscheidung':'Eigene offene Anträge'}</dt><dd>${offA?`<a href="#" data-act="goantr" style="font-weight:600;${isBL()?'color:var(--err)':''}">${offA}</a>`:0}</dd>
    <dt>laufende Disziplinarverfahren</dt><dd>${offD.length}${fristD?` <span style="color:var(--warn)">(${fristD} mit Frist ≤ 7 Tage)</span>`:''}</dd>
+   <dt>abwesend (Urlaub, abgemeldet, beurlaubt, krank)</dt><dd>${P.filter(p=>ABWESEND.includes(p.status)).length}</dd>
    <dt>vorläufig des Dienstes enthoben</dt><dd>${susp.length?`<span style="color:var(--err)">${susp.length}</span>`:0}</dd>
    <dt>vakante Funktionen (davon hD)</dt><dd>${(()=>{const v=S.org.filter(o=>orgStatus(o)==='vakant');return v.length?`<a href="#" data-act="goorg">${v.length} (${v.filter(o=>o.lg==='hD').length})</a>`:0})()}</dd>
    ${isBL()?`<dt>offene Bewerbungen höherer Dienst</dt><dd>${offB}</dd>`:''}
@@ -1088,7 +1090,7 @@ V.cockpit={t:'Übersicht',
    ${(()=>{const L=S.todos.filter(x=>!x.erledigt&&betrifftMich(x.zustaendig)).sort((a,b)=>(a.faellig||'9')<(b.faellig||'9')?-1:1);return L.length?`<ul class="wv">${L.slice(0,8).map(x=>`<li><input type="checkbox" data-act="todochk" data-id="${x.id}" style="margin:0"><span class="d" style="${x.faellig&&x.faellig<t?'color:var(--err);font-weight:600':''}">${x.faellig?fmtD(x.faellig):'–'}</span><a data-act="todo" data-id="${x.id}">${esc(x.titel)}</a>${x.prio==='hoch'?'<span class="st err" style="margin-left:auto">hoch</span>':''}</li>`).join('')}</ul>${L.length>8?`<div style="color:var(--tx3)">… und ${L.length-8} weitere</div>`:''}`:'<div style="color:var(--tx3)">Keine offenen Aufgaben.</div>'})()}
   </fieldset>
   <fieldset><legend>Führungskräfte (höherer Dienst)</legend>
-   <ul class="wv">${fk.map(p=>`<li><span style="width:58px;flex:none;font-weight:600">${rolleOf(p)?pdot(p.id):''}${esc(p.dg)}</span><span>${esc(p.nachname)}${p.vorname?', '+esc(p.vorname):''}${p.titel?', '+esc(p.titel):''}${p.id===USER.pid?' <span style="color:var(--tx3)">(Sie)</span>':''}</span><span style="margin-left:auto;color:var(--tx2);text-align:right">${rolleOf(p)==='Behördenleitung'?'Behördenleitung':rolleOf(p)==='Leitung Wachbezirk'?esc(wbOf(p.dienststelle)):esc(p.funktion||p.dienststelle)}${p.status!=='aktiv'?' '+stBadge(p.status):''}</span></li>`).join('')||'<li style="color:var(--tx3)">Keine Führungskräfte erfasst.</li>'}${fk.length>8?'':''}</ul>
+   <ul class="wv">${fk.map(p=>`<li><span style="width:58px;flex:none;font-weight:600">${rolleOf(p)?pdot(p.id):''}${esc(p.dg)}</span><span>${esc(p.nachname)}${p.vorname?', '+esc(p.vorname):''}${p.titel?', '+esc(p.titel):''}${p.id===USER.pid?' <span style="color:var(--tx3)">(Sie)</span>':''}</span><span style="margin-left:auto;color:var(--tx2);text-align:right">${rolleOf(p)==='Behördenleitung'?'Behördenleitung':rolleOf(p)==='Leitung Wachbezirk'?esc(wbOf(p.dienststelle)):esc(p.funktion||p.dienststelle)}${p.status!=='aktiv'?' '+statusBadge(p):''}</span></li>`).join('')||'<li style="color:var(--tx3)">Keine Führungskräfte erfasst.</li>'}${fk.length>8?'':''}</ul>
   </fieldset>
   <fieldset><legend>Letzte Personalmaßnahmen</legend>
    ${last.length?`<ul class="wv">${last.map(m=>`<li><span class="d">${fmtD(m.datum)}</span><span>${esc(m.art)}: ${esc(pname(m.pid,1))}${m.nach&&m.art!=='Versetzung'?' → '+esc(m.nach):''}${m.art==='Versetzung'?' → '+esc(m.nach):''}</span><a style="margin-left:auto;white-space:nowrap" data-act="akte" data-id="${m.pid}">Akte</a></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Noch keine Maßnahmen verfügt.</div>'}
@@ -1194,7 +1196,9 @@ function antragAblehnen(a){
 }
 
 /* ================= Personal ================= */
-const PSTATUS=['aktiv','beurlaubt','krank gemeldet','suspendiert','ausgeschieden'];
+const PSTATUS=['aktiv','im Urlaub','abgemeldet','beurlaubt','krank gemeldet','suspendiert','ausgeschieden'];
+const ABWESEND=['im Urlaub','abgemeldet','beurlaubt','krank gemeldet'];
+const statusBadge=p=>stBadge(p.status)+(p.statusBis&&ABWESEND.includes(p.status)?` <span style="color:var(--tx3);font-size:11px">bis ${fmtD(p.statusBis)}</span>`:'');
 const rankOpts=list=>list.map(r=>({v:r.k,l:r.k+' – '+r.n+' ('+r.bes+')'}));
 const PF=()=>[
  {t:'sep',l:'Personalien'},
@@ -1261,10 +1265,11 @@ function doBef(pid,nach,datum,text){const p=person(pid);const down=rankIdx(nach)
 function doVers(pid,ds,funktion,datum,text){const p=person(pid);
  const m={id:uid(),az:AZ.P(),art:'Versetzung',pid,von:p.dienststelle,nach:ds,datum,text:(text||'')+(funktion?' – Verwendung: '+funktion:''),user:USER.kennung};
  S.massnahmen.push(m);p.dienststelle=ds;if(funktion)p.funktion=funktion;save('personal','massnahmen');log('Versetzung',p.nachname+': '+m.von+' → '+m.nach);render();return m}
-function doStatus(pid,status,datum,text){const p=person(pid);
- const art={beurlaubt:'Beurlaubung',suspendiert:'Vorläufige Dienstenthebung',aktiv:'Wiederaufnahme des Dienstes','krank gemeldet':'Krankmeldung'}[status];
- const m={id:uid(),az:AZ.P(),art,pid,von:p.status,nach:status,datum,text:text||art,user:USER.kennung};S.massnahmen.push(m);p.status=status;
- save('personal','massnahmen');log(art,p.nachname);render();return m}
+function doStatus(pid,status,datum,text,bis){const p=person(pid);
+ const art={beurlaubt:'Beurlaubung','im Urlaub':'Urlaub',abgemeldet:'Abmeldung vom Dienst',suspendiert:'Vorläufige Dienstenthebung',aktiv:p.status==='suspendiert'?'Wiederaufnahme des Dienstes':'Rückmeldung zum Dienst','krank gemeldet':'Krankmeldung'}[status]||'Statusänderung';
+ const m={id:uid(),az:AZ.P(),art,pid,von:p.status,nach:status,datum,text:(text||art)+(bis&&status!=='aktiv'?' (voraussichtlich bis '+fmtD(bis)+')':''),user:USER.kennung};S.massnahmen.push(m);
+ p.status=status;p.statusAb=datum;p.statusBis=status!=='aktiv'&&bis?bis:'';
+ save('personal','massnahmen');log(art,p.nachname+(p.statusBis?' bis '+fmtD(p.statusBis):''));render();return m}
 function doEntl(pid,grund,datum,text){const p=person(pid);
  const m={id:uid(),az:AZ.P(),art:'Entlassung',pid,von:p.dg,nach:'',datum,text:grund+(text?' – '+text:''),grund,begr:text,user:USER.kennung};
  S.massnahmen.push(m);p.status='ausgeschieden';p.austritt=datum;p.austrittGrund=grund;save('personal','massnahmen');log('Entlassung',p.dnr+' '+p.nachname+' – '+grund);render();return m}
@@ -1303,13 +1308,13 @@ function statusAendern(id){
  if(!needScope(id))return;
  if(id===USER.pid){toast('Den eigenen Dienststatus kann nur eine andere Person der Behördenleitung ändern.',true);return}
  const p=person(id);if(p.status==='ausgeschieden'){toast('Bedienstete/r ist ausgeschieden.',true);return}
- const F=[{k:'status',l:'Neuer Status',t:'select',req:1,o:PSTATUS.filter(s=>s!=='ausgeschieden')},{k:'datum',l:'Ab',t:'date',req:1},{k:'text',l:'Grund / Bemerkung',t:'textarea',rows:3}];
+ const F=[{k:'status',l:'Neuer Status',t:'select',req:1,o:PSTATUS.filter(s=>s!=='ausgeschieden')},{k:'datum',l:'Ab',t:'date',req:1},{k:'bis',l:'Voraussichtlich bis',t:'date'},{k:'text',l:'Grund / Bemerkung',t:'textarea',rows:3}];
  const needA=s=>!isBL()&&(s==='suspendiert'||p.status==='suspendiert');
- openDlg({title:'Dienststatus ändern',size:'small',body:`${antragDlgHint()}<p style="margin-top:0">${esc(p.dg)} ${esc(p.nachname)}, ${esc(p.vorname)} – derzeit ${stBadge(p.status)}</p>`+formHtml(F,{status:p.status,datum:today()}),
-  onOpen:a=>{const u=()=>{const na=needA(a.q('#f_status').value);const h=a.q('#antrHint');if(h)h.style.display=na?'':'none'};a.q('#f_status').onchange=u;u()},
-  buttons:[{label:'Übernehmen',pri:true,fn:a=>{const v=readForm(a,F);if(!v)return false;if(v.status===p.status)return;
+ openDlg({title:'Dienststatus ändern',size:'small',body:`${antragDlgHint()}<p style="margin-top:0">${esc(p.dg)} ${esc(p.nachname)}, ${esc(p.vorname)} – derzeit ${statusBadge(p)}</p>`+formHtml(F,{status:p.status,datum:today(),bis:p.statusBis||''}),
+  onOpen:a=>{const u=()=>{const s=a.q('#f_status').value;const na=needA(s);const h=a.q('#antrHint');if(h)h.style.display=na?'':'none';const show=ABWESEND.includes(s);a.q('#f_bis').style.display=show?'':'none';a.q('label[for="f_bis"]').style.display=show?'':'none'};a.q('#f_status').onchange=u;u()},
+  buttons:[{label:'Übernehmen',pri:true,fn:a=>{const v=readForm(a,F);if(!v)return false;if(v.bis&&v.bis<v.datum){toast('„Voraussichtlich bis“ liegt vor dem Beginn.',true);return false}if(v.status===p.status&&(v.bis||'')===(p.statusBis||''))return;
    if(needA(v.status)){if(v.status!=='suspendiert'){toast('Die Aufhebung einer Dienstenthebung ist der Behördenleitung vorbehalten.',true);return false}stelleAntrag('Vorläufige Dienstenthebung',id,{datum:v.datum,text:v.text},p.status+' → suspendiert',v.text);return}
-   const m=doStatus(id,v.status,v.datum,v.text);if(v.status==='suspendiert')setTimeout(()=>printMassnahme(m),50)}},{label:'Abbrechen'}]});
+   const m=doStatus(id,v.status,v.datum,v.text,ABWESEND.includes(v.status)?v.bis:'');if(v.status==='suspendiert')setTimeout(()=>printMassnahme(m),50)}},{label:'Abbrechen'}]});
 }
 const ENTL_GR=['Entlassung auf eigenen Antrag','Entlassung während der Probezeit (mangelnde Bewährung)','Entlassung wegen dauerhafter Inaktivität','Entfernung aus dem Dienst (Disziplinarverfahren)','Entlassung wegen Regelverstoßes (Serverregelwerk)','Versetzung zu anderem Dienstherrn / Fraktionswechsel'];
 function entlassen(id){
@@ -1367,7 +1372,7 @@ V.personal={t:'Personalverzeichnis',count:()=>S.personal.filter(p=>p.status!=='a
    {l:'Einstellung',f:r=>fmtD(r.eintritt),s:r=>r.eintritt||''},
    {l:'Rangänderung',f:r=>r.befoerdert&&r.befoerdert!==r.eintritt?fmtD(r.befoerdert):'',s:r=>r.befoerdert||''},
    {l:'Tage i. D.',f:r=>r.eintritt&&r.status!=='ausgeschieden'?String(daysBetween(r.eintritt,today())):'',num:1,s:r=>r.eintritt?daysBetween(r.eintritt,today()):-1},
-   {l:'Status',f:r=>stBadge(r.status)+(openDisz(r.id).length?' <span class="st err">Disz.</span>':'')+(rolleOf(r)?` <span class="st info">${rolleOf(r)==='Behördenleitung'?'BL':'LW'}</span>`:'')}
+   {l:'Status',f:r=>statusBadge(r)+(openDisz(r.id).length?' <span class="st err">Disz.</span>':'')+(rolleOf(r)?` <span class="st info">${rolleOf(r)==='Behördenleitung'?'BL':'LW'}</span>`:'')}
   ],rows,S.personal.length<=5?'Noch keine weiteren Bediensteten erfasst. Mit „Person hinzufügen“ (F2) nehmen Sie Bedienstete auf.':'Keine Bediensteten gefunden.');
  },
  neu(){personHinzufuegen()},
@@ -1581,7 +1586,7 @@ V.benutzer={t:'Führungskräfte & Zugänge',editLabel:'Personalakte',neuLabel:'F
  count:()=>S.personal.filter(p=>isHD(p.dg)&&p.status!=='ausgeschieden').length||'',
  render(){const nur=fil('z','alle');const rows=S.personal.filter(p=>isHD(p.dg)&&p.status!=='ausgeschieden'&&(nur==='alle'||hatKonto(p)===(nur==='mit'))).sort((a,b)=>rankIdx(b.dg)-rankIdx(a.dg)||a.nachname.localeCompare(b.nachname));
   return `<div class="hint info">Die Anmeldung erfolgt mit <b>Nachname und Kennwort</b> über Firebase. Alle Führungskräfte des höheren Dienstes haben Anspruch auf einen BeLIS-Zugang. Ablauf: <b>Führungskraft erfassen</b> → <b>Zugang anlegen</b> (Konto mit Standardkennwort, Freigabe des Datenzugriffs). Rollen: <b>${esc(csv(S.meta.rollenBL).join(', '))}</b> Behördenleitung (Vollzugriff) · <b>${esc(csv(S.meta.rollenLW).join(', '))}</b> Leitung Wachbezirk · übrige hD <b>Führungskraft</b> (Lesezugriff im eigenen Wachbezirk, Anträge, Termine, Aufgaben, Notizen). <b>Sperren</b> entzieht den Zugriff vorübergehend, <b>Löschen</b> entfernt die Person vollständig.</div><div class="filterbar"><label>Anzeige</label><select data-fil="z" style="width:auto">${opts([{v:'alle',l:'alle Führungskräfte (hD)'},{v:'mit',l:'nur mit angelegtem Konto'},{v:'ohne',l:'nur ohne Konto'}],nur)}</select></div>`+
-  grid('benutzer',[{l:'Farbe',f:r=>rolleOf(r)?`<i class="pdot" style="background:${farbe(r.id)};width:14px;height:14px"></i>`:'',w:'44px'},{l:'Name',f:r=>'<b>'+esc(r.nachname)+'</b>, '+esc(r.vorname)+(r.titel?', '+esc(r.titel):'')},{l:'Amt',f:r=>esc(r.dg),s:r=>String(rankIdx(r.dg)+10).padStart(3,'0')},{l:'Funktion',f:r=>esc(r.funktion||'')},{l:'Dienststatus',f:r=>stBadge(r.status)},{l:'BeLIS-Rolle',f:r=>rolleOf(r)?esc(rolleOf(r))+(rolleOf(r)==='Leitung Wachbezirk'?' ('+esc(wbOf(r.dienststelle))+')':''):'<span style="color:var(--tx3)">kein Zugang</span>'},{l:'Anmeldekennung',f:r=>rolleOf(r)?esc(loginMail(r.nachname)):'',mono:1},{l:'Konto',f:r=>{if(!rolleOf(r))return '';const a=r.acc||{};if(!hatKonto(r))return '<span class="st n">kein Konto</span>';return a.gesperrt?stBadge('gesperrt'):a.must?'<span class="st warn">Kennwortwechsel verlangt</span>':a.last?'<span class="st ok">aktiv</span>':'<span class="st n">noch nicht angemeldet</span>'}},{l:'Letzte Anmeldung',f:r=>fmtTs((r.acc||{}).last)}],rows,'Keine Führungskräfte des höheren Dienstes erfasst.')},
+  grid('benutzer',[{l:'Farbe',f:r=>rolleOf(r)?`<i class="pdot" style="background:${farbe(r.id)};width:14px;height:14px"></i>`:'',w:'44px'},{l:'Name',f:r=>'<b>'+esc(r.nachname)+'</b>, '+esc(r.vorname)+(r.titel?', '+esc(r.titel):'')},{l:'Amt',f:r=>esc(r.dg),s:r=>String(rankIdx(r.dg)+10).padStart(3,'0')},{l:'Funktion',f:r=>esc(r.funktion||'')},{l:'Dienststatus',f:r=>statusBadge(r)},{l:'BeLIS-Rolle',f:r=>rolleOf(r)?esc(rolleOf(r))+(rolleOf(r)==='Leitung Wachbezirk'?' ('+esc(wbOf(r.dienststelle))+')':''):'<span style="color:var(--tx3)">kein Zugang</span>'},{l:'Anmeldekennung',f:r=>rolleOf(r)?esc(loginMail(r.nachname)):'',mono:1},{l:'Konto',f:r=>{if(!rolleOf(r))return '';const a=r.acc||{};if(!hatKonto(r))return '<span class="st n">kein Konto</span>';return a.gesperrt?stBadge('gesperrt'):a.must?'<span class="st warn">Kennwortwechsel verlangt</span>':a.last?'<span class="st ok">aktiv</span>':'<span class="st n">noch nicht angemeldet</span>'}},{l:'Letzte Anmeldung',f:r=>fmtTs((r.acc||{}).last)}],rows,'Keine Führungskräfte des höheren Dienstes erfasst.')},
  edit(id){personalakte(id)},
  extra:[
   {l:'Zugang anlegen',ic:'neu',sel:1,fn:id=>zugangAnlegenDlg(person(id))},
@@ -2123,7 +2128,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.5.3 (Build 26.10.03)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.5.4 (Build 26.10.03)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
