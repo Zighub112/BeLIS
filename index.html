@@ -332,7 +332,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.5.2 (Build 26.10.03)</div>
+    <div class="hm">BeLIS 5.5.3 (Build 26.10.03)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -1241,7 +1241,7 @@ function personalakte(id,tab){
  };
  const dlg=openDlg({title:`Personalakte – ${p.dg} ${p.nachname}, ${p.vorname} (DNr. ${p.dnr})`,size:'wide',
   body:`<div class="tabs">${tabs.map(t=>`<button data-tab="${t[0]}">${t[1]}</button>`).join('')}</div><div class="tabp" id="akteBody"></div>`,
-  left:[{label:'Personalbogen drucken',close:false,fn:()=>printDoc(docPersonalbogen(p),'Personalbogen')},...(edit?[...(isBL()?[{label:'Befördern (hD) …',fn:()=>{setTimeout(()=>befoerdern(id),10)}}]:[]),{label:'Antrag stellen …',fn:()=>{setTimeout(()=>antragNeu(id),10)}}]:[])],
+  left:[{label:'Personalbogen drucken',close:false,fn:()=>printDoc(docPersonalbogen(p),'Personalbogen')},...(edit?[{label:'Status ändern …',fn:()=>{setTimeout(()=>statusAendern(id),10)}},...(isBL()?[{label:'Befördern (hD) …',fn:()=>{setTimeout(()=>befoerdern(id),10)}}]:[]),{label:'Antrag stellen …',fn:()=>{setTimeout(()=>antragNeu(id),10)}}]:[])],
   buttons:[...(edit?[{label:'Speichern',pri:true,fn:a=>{if(cur!=='st'){render();return}const v=readForm(a,F);if(!v)return false;delete v.status;delete v.dg;delete v.dienststelle;if(!isBL())delete v.dnr;else if(v.dnr!==p.dnr&&S.personal.some(x=>x!==p&&x.dnr===v.dnr)){toast('Die Dienstnummer '+v.dnr+' ist bereits vergeben.',true);return false}
     Object.assign(p,v);save('personal');log('Personalakte geändert',p.dnr+' '+p.nachname);render();toast('Personalakte gespeichert.')}}]:[]),{label:'Schließen'}]});
  const show=()=>{dlg.qa('[data-tab]').forEach(b=>b.classList.toggle('act',b.dataset.tab===cur));dlg.q('#akteBody').innerHTML=body();
@@ -1301,6 +1301,7 @@ function versetzen(id){
 }
 function statusAendern(id){
  if(!needScope(id))return;
+ if(id===USER.pid){toast('Den eigenen Dienststatus kann nur eine andere Person der Behördenleitung ändern.',true);return}
  const p=person(id);if(p.status==='ausgeschieden'){toast('Bedienstete/r ist ausgeschieden.',true);return}
  const F=[{k:'status',l:'Neuer Status',t:'select',req:1,o:PSTATUS.filter(s=>s!=='ausgeschieden')},{k:'datum',l:'Ab',t:'date',req:1},{k:'text',l:'Grund / Bemerkung',t:'textarea',rows:3}];
  const needA=s=>!isBL()&&(s==='suspendiert'||p.status==='suspendiert');
@@ -1373,6 +1374,7 @@ V.personal={t:'Personalverzeichnis',count:()=>S.personal.filter(p=>p.status!=='a
  edit(id){personalakte(id)},
  del(id){personLoeschen(person(id))},
  extra:[
+  {l:'Status ändern',ic:'edit',sel:1,tip:'aktiv, beurlaubt, krank gemeldet, suspendiert',fn:id=>statusAendern(id)},
   {l:'Einstellung mit Urkunde',ic:'up',tip:'Neueinstellung als Personalmaßnahme mit Ernennungsurkunde',fn:()=>einstellen()},
   {l:'Import aus Tabelle',ic:'neu',bl:1,fn:()=>importDlg()},
   {l:'Personalbogen',ic:'doc',sel:1,fn:id=>printDoc(docPersonalbogen(person(id)),'Personalbogen')}
@@ -1579,10 +1581,11 @@ V.benutzer={t:'Führungskräfte & Zugänge',editLabel:'Personalakte',neuLabel:'F
  count:()=>S.personal.filter(p=>isHD(p.dg)&&p.status!=='ausgeschieden').length||'',
  render(){const nur=fil('z','alle');const rows=S.personal.filter(p=>isHD(p.dg)&&p.status!=='ausgeschieden'&&(nur==='alle'||hatKonto(p)===(nur==='mit'))).sort((a,b)=>rankIdx(b.dg)-rankIdx(a.dg)||a.nachname.localeCompare(b.nachname));
   return `<div class="hint info">Die Anmeldung erfolgt mit <b>Nachname und Kennwort</b> über Firebase. Alle Führungskräfte des höheren Dienstes haben Anspruch auf einen BeLIS-Zugang. Ablauf: <b>Führungskraft erfassen</b> → <b>Zugang anlegen</b> (Konto mit Standardkennwort, Freigabe des Datenzugriffs). Rollen: <b>${esc(csv(S.meta.rollenBL).join(', '))}</b> Behördenleitung (Vollzugriff) · <b>${esc(csv(S.meta.rollenLW).join(', '))}</b> Leitung Wachbezirk · übrige hD <b>Führungskraft</b> (Lesezugriff im eigenen Wachbezirk, Anträge, Termine, Aufgaben, Notizen). <b>Sperren</b> entzieht den Zugriff vorübergehend, <b>Löschen</b> entfernt die Person vollständig.</div><div class="filterbar"><label>Anzeige</label><select data-fil="z" style="width:auto">${opts([{v:'alle',l:'alle Führungskräfte (hD)'},{v:'mit',l:'nur mit angelegtem Konto'},{v:'ohne',l:'nur ohne Konto'}],nur)}</select></div>`+
-  grid('benutzer',[{l:'Farbe',f:r=>rolleOf(r)?`<i class="pdot" style="background:${farbe(r.id)};width:14px;height:14px"></i>`:'',w:'44px'},{l:'Name',f:r=>'<b>'+esc(r.nachname)+'</b>, '+esc(r.vorname)+(r.titel?', '+esc(r.titel):'')},{l:'Amt',f:r=>esc(r.dg),s:r=>String(rankIdx(r.dg)+10).padStart(3,'0')},{l:'Funktion',f:r=>esc(r.funktion||'')},{l:'BeLIS-Rolle',f:r=>rolleOf(r)?esc(rolleOf(r))+(rolleOf(r)==='Leitung Wachbezirk'?' ('+esc(wbOf(r.dienststelle))+')':''):'<span style="color:var(--tx3)">kein Zugang</span>'},{l:'Anmeldekennung',f:r=>rolleOf(r)?esc(loginMail(r.nachname)):'',mono:1},{l:'Konto',f:r=>{if(!rolleOf(r))return '';const a=r.acc||{};if(!hatKonto(r))return '<span class="st n">kein Konto</span>';return a.gesperrt?stBadge('gesperrt'):a.must?'<span class="st warn">Kennwortwechsel verlangt</span>':a.last?'<span class="st ok">aktiv</span>':'<span class="st n">noch nicht angemeldet</span>'}},{l:'Letzte Anmeldung',f:r=>fmtTs((r.acc||{}).last)}],rows,'Keine Führungskräfte des höheren Dienstes erfasst.')},
+  grid('benutzer',[{l:'Farbe',f:r=>rolleOf(r)?`<i class="pdot" style="background:${farbe(r.id)};width:14px;height:14px"></i>`:'',w:'44px'},{l:'Name',f:r=>'<b>'+esc(r.nachname)+'</b>, '+esc(r.vorname)+(r.titel?', '+esc(r.titel):'')},{l:'Amt',f:r=>esc(r.dg),s:r=>String(rankIdx(r.dg)+10).padStart(3,'0')},{l:'Funktion',f:r=>esc(r.funktion||'')},{l:'Dienststatus',f:r=>stBadge(r.status)},{l:'BeLIS-Rolle',f:r=>rolleOf(r)?esc(rolleOf(r))+(rolleOf(r)==='Leitung Wachbezirk'?' ('+esc(wbOf(r.dienststelle))+')':''):'<span style="color:var(--tx3)">kein Zugang</span>'},{l:'Anmeldekennung',f:r=>rolleOf(r)?esc(loginMail(r.nachname)):'',mono:1},{l:'Konto',f:r=>{if(!rolleOf(r))return '';const a=r.acc||{};if(!hatKonto(r))return '<span class="st n">kein Konto</span>';return a.gesperrt?stBadge('gesperrt'):a.must?'<span class="st warn">Kennwortwechsel verlangt</span>':a.last?'<span class="st ok">aktiv</span>':'<span class="st n">noch nicht angemeldet</span>'}},{l:'Letzte Anmeldung',f:r=>fmtTs((r.acc||{}).last)}],rows,'Keine Führungskräfte des höheren Dienstes erfasst.')},
  edit(id){personalakte(id)},
  extra:[
   {l:'Zugang anlegen',ic:'neu',sel:1,fn:id=>zugangAnlegenDlg(person(id))},
+  {l:'Status ändern',ic:'edit',sel:1,tip:'aktiv, beurlaubt, krank gemeldet, suspendiert',fn:id=>statusAendern(id)},
   {l:'Löschen',ic:'del',sel:1,fn:id=>personLoeschen(person(id))},
   {l:'Farbe festlegen',ic:'edit',sel:1,fn:id=>farbeDlg(person(id))},
   {l:'Kennwort zurücksetzen',ic:'ref',sel:1,fn:id=>{if(!rolleOf(person(id))){toast('Diese Person hat keinen BeLIS-Zugang.',true);return}kennwortZuruecksetzen(person(id))}},
@@ -2120,7 +2123,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.5.2 (Build 26.10.03)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.5.3 (Build 26.10.03)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
