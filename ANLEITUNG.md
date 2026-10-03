@@ -53,7 +53,16 @@ Alle Führungskräfte des höheren Dienstes (PR bis PP) haben Anspruch auf einen
 
 Rollen: PP/PVP = Behördenleitung (Vollzugriff), LPD B3 = Leitung Wachbezirk, übrige hD = Führungskraft (Lesezugriff im eigenen Wachbezirk, Anträge, Termine, Aufgaben, Notizen).
 
-**Sperren** entzieht den Zugriff vorübergehend. **Löschen** entfernt die Person vollständig; das Anmeldekonto wird mit der Cloud Function gleich mit entfernt, sonst in der Firebase-Konsole löschen (eine Anmeldung ist ohnehin nicht mehr möglich).
+**Sperren** entzieht den Zugriff vorübergehend. **Löschen** entfernt die Person vollständig und trägt ihr Anmeldekonto in die Löschliste (`zugang/geloescht`) ein. Das Konto wird dann automatisch aus Firebase Authentication entfernt:
+
+- **mit Cloud Function (Blaze):** sofort, durch die Funktion `geloeschteKontenEntfernen`
+- **ohne Cloud Function (Spark):** beim nächsten Anmeldeversuch der gelöschten Person – das Konto löscht sich dabei selbst. Bis dahin ist keine Anmeldung in BeLIS möglich.
+
+Wird dieselbe Person später neu erfasst, nimmt BeLIS sie beim Anlegen des Zugangs wieder von der Löschliste.
+
+### Umstellung auf Version 5.5.1 (einmalig)
+
+Die Zugriffsregeln wurden um die Löschliste ergänzt. Den Inhalt von `firestore.rules` erneut in Firestore › **Regeln** veröffentlichen (oder `firebase deploy --only firestore`).
 
 ### Umstellung von Version 5.4.2 oder älter (einmalig)
 

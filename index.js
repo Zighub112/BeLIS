@@ -1,8 +1,9 @@
 /* BeLIS – Cloud Functions (optional, Blaze-Tarif)
    kennwortZuruecksetzen: Kennwort auf das Standardkennwort setzen bzw. Konto anlegen
-   kontoLoeschen:         Anmeldekonto einer gelöschten Person entfernen
+   geloeschteKontenEntfernen: Anmeldekonten gelöschter Personen automatisch entfernen
    Aufruf jeweils nur durch die Behördenleitung (Amt laut BeLIS-Personalakte). */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const admin = require('firebase-admin');
 admin.initializeApp();
 
@@ -49,15 +50,24 @@ exports.kennwortZuruecksetzen = onCall({ region: 'europe-west3' }, async (req) =
   return { ok: true, neu: !user };
 });
 
-exports.kontoLoeschen = onCall({ region: 'europe-west3' }, async (req) => {
-  const d = await laden();
-  const callerMail = await pruefeBL(req, d);
-  const target = String((req.data && req.data.email) || '').toLowerCase();
-  if (!target.endsWith('@' + DOMAIN)) throw new HttpsError('invalid-argument', 'Ungültige Kennung.');
-  if (target === callerMail) throw new HttpsError('invalid-argument', 'Das eigene Konto kann nicht gelöscht werden.');
-  if (d.personal.some(p => p.status !== 'ausgeschieden' && mail(p) === target))
-    throw new HttpsError('failed-precondition', 'Die Person ist noch im Personalbestand – zuerst in BeLIS löschen.');
-  try { const u = await admin.auth().getUserByEmail(target); await admin.auth().deleteUser(u.uid); }
-  catch (e) { if (e.code !== 'auth/user-not-found') throw new HttpsError('internal', e.message); }
-  return { ok: true };
+/* Automatisch: Sobald BeLIS eine gelöschte Person in die Löschliste (zugang/geloescht) einträgt,
+   wird ihr Anmeldekonto aus Firebase Authentication entfernt. Aktive Zugänge werden nie gelöscht. */
+exports.geloeschteKontenEntfernen = onDocumentWritten({ document: 'zugang/geloescht', region: 'europe-west3' }, async (event) => {
+  const after = event.data && event.data.after;
+  if (!after || !after.exists) return;
+  const emails = (after.get('emails') || []).map(e => String(e).toLowerCase());
+  if (!emails.length) return;
+  const lS = await admin.firestore().doc('zugang/liste').get();
+  const aktiv = new Set(((lS.exists && lS.get('alle')) || []).map(e => String(e).toLowerCase()));
+  const erledigt = [];
+  for (const e of emails) {
+    if (!e.endsWith('@' + DOMAIN) || aktiv.has(e)) continue;
+    try { const u = await admin.auth().getUserByEmail(e); await admin.auth().deleteUser(u.uid); }
+    catch (x) { if (x.code !== 'auth/user-not-found') { console.error(e, x); continue; } }
+    erledigt.push(e);
+  }
+  if (erledigt.length) await after.ref.update({
+    emails: admin.firestore.FieldValue.arrayRemove(...erledigt),
+    zuletztEntfernt: admin.firestore.FieldValue.serverTimestamp()
+  });
 });

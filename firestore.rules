@@ -32,6 +32,12 @@ service cloud.firestore {
       allow read: if berechtigt();
       allow write: if behoerdenleitung();
     }
+    // Löschliste: Konten gelöschter Personen (darf jedes angemeldete Konto lesen,
+    // damit sich ein gelöschtes Konto beim nächsten Anmeldeversuch selbst entfernt)
+    match /zugang/geloescht {
+      allow read: if request.auth != null;
+      allow write: if behoerdenleitung();
+    }
     match /{rest=**} {
       allow read, write: if false;
     }
