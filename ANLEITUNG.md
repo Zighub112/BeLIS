@@ -44,15 +44,16 @@ Den Ordner `public` auf app.netlify.com/drop ziehen. Die Zugriffsregeln dann wie
 2. „Mandant einrichten“ bestätigen – die Datenbank wird mit dem Organisationsstand gefüllt.
 3. Bisherige Daten übernehmen: In der alten BeLIS-Version (claude.ai) **Verwaltung › Datensicherung › Export** kopieren, in der neuen Version unter **Datensicherung › Import** einfügen.
 
-## Neue Führungskraft
+## Führungskräfte und Zugänge
 
-BeLIS › **Benutzerverwaltung** › **Führungskraft erfassen** (Amt PP, PVP oder LPD B3).
-Die Person wird sofort in die Datenbank übernommen, erhält ein Anmeldekonto mit dem Standardkennwort und wird automatisch für den Datenzugriff freigegeben. Bei der ersten Anmeldung muss sie ein eigenes Kennwort festlegen.
+Alle Führungskräfte des höheren Dienstes (PR bis PP) haben Anspruch auf einen BeLIS-Zugang.
 
-Für bereits erfasste Personen: Benutzerverwaltung › **Zugang anlegen**.
-Wird jemand per Beförderung in ein Amt mit Zugang befördert, bietet BeLIS das Konto direkt an.
+1. BeLIS › **Führungskräfte & Zugänge** › **Führungskraft erfassen** – die Person wird sofort in die Datenbank übernommen.
+2. Direkt danach (oder später über **Zugang anlegen**): Anmeldekonto mit dem Standardkennwort. Der Datenzugriff wird automatisch freigegeben; bei der ersten Anmeldung muss ein eigenes Kennwort festgelegt werden.
 
-**Sperren**, Suspendierung oder Ausscheiden entziehen den Datenzugriff sofort.
+Rollen: PP/PVP = Behördenleitung (Vollzugriff), LPD B3 = Leitung Wachbezirk, übrige hD = Führungskraft (Lesezugriff im eigenen Wachbezirk, Anträge, Termine, Aufgaben, Notizen).
+
+**Sperren** entzieht den Zugriff vorübergehend. **Löschen** entfernt die Person vollständig; das Anmeldekonto wird mit der Cloud Function gleich mit entfernt, sonst in der Firebase-Konsole löschen (eine Anmeldung ist ohnehin nicht mehr möglich).
 
 ### Umstellung von Version 5.4.2 oder älter (einmalig)
 
@@ -77,6 +78,6 @@ Firebase erlaubt das Setzen fremder Kennwörter nur auf dem Server. Dafür gibt 
    cd ..
    firebase deploy --only functions
    ```
-3. Fertig. „Kennwort zurücksetzen“ funktioniert jetzt mit einem Klick und legt fehlende Konten gleich mit an.
+3. Fertig. „Kennwort zurücksetzen“ funktioniert jetzt mit einem Klick, legt fehlende Konten gleich mit an, und beim Löschen einer Person wird auch deren Anmeldekonto entfernt.
 
 Die Funktion prüft selbst, dass nur die Behördenleitung (Amt laut Personalakte) sie auslösen darf und nur Konten mit BeLIS-Zugang zurückgesetzt werden.
