@@ -332,7 +332,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.5.1 (Build 26.10.03)</div>
+    <div class="hm">BeLIS 5.5.2 (Build 26.10.03)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -1626,7 +1626,7 @@ function personLoeschen(p){
  const konto=hatKonto(p);
  openDlg({title:'Person löschen',size:'small',body:`<div style="display:flex;gap:12px"><div style="font-size:26px;color:var(--err);line-height:1">⚠</div><div>
   <p style="margin-top:0"><b>${esc(p.dg)} ${esc([p.titel,p.vorname,p.nachname].filter(Boolean).join(' '))}</b> (${esc(p.dnr)}) wird unwiderruflich gelöscht.</p>
-  <ul style="margin:0 0 8px;padding-left:18px">${rolleOf(p)?'<li>Der Datenzugriff wird sofort entzogen.</li>':''}<li>Das Anmeldekonto wird automatisch aus Firebase gelöscht.</li>${refs?`<li>${refs} Vorgang/Vorgänge (Maßnahmen, Verfahren, Anträge) bleiben erhalten, zeigen aber keinen Namen mehr.</li>`:''}</ul>
+  <ul style="margin:0 0 8px;padding-left:18px">${rolleOf(p)?'<li>Der Datenzugriff wird sofort entzogen.</li>':''}${refs?`<li>${refs} Vorgang/Vorgänge (Maßnahmen, Verfahren, Anträge) bleiben erhalten, zeigen aber keinen Namen mehr.</li>`:''}</ul>
   <p style="margin:0">Für reguläre Abgänge besser „Entlassung“ verwenden – dann bleibt die Akte nachvollziehbar.</p>
   <div class="form" style="margin-top:8px"><label>Zur Bestätigung Nachnamen eingeben</label><input type="text" id="delConf" autocomplete="off"></div></div></div>`,
   buttons:[{label:'Endgültig löschen',pri:true,fn:async a=>{if(a.q('#delConf').value.trim().toLowerCase()!==p.nachname.toLowerCase()){a.q('#delConf').classList.add('bad');toast('Nachname stimmt nicht überein.',true);return false}
@@ -1635,7 +1635,7 @@ function personLoeschen(p){
     delete SEL.personal;delete SEL.benutzer;await Store.write('personal');Store.push('org');await zugangSync(true);
     let vorgemerkt=false;try{await kontoZumLoeschen(mail);vorgemerkt=true}catch(e){}
     log('Person gelöscht',p.dnr+' '+p.dg+' '+p.nachname+(vorgemerkt?' – Anmeldekonto zur Löschung vorgemerkt':''));a.close();render();
-    toast(vorgemerkt?p.nachname+' wurde gelöscht. Das Anmeldekonto wird automatisch entfernt.':p.nachname+' wurde gelöscht. Löschliste nicht erreichbar – Zugriffsregeln aktualisieren.',!vorgemerkt);return false}},{label:'Abbrechen'}]});
+    openDlg({title:'Nutzer gelöscht',size:'small',body:'<div style="display:flex;gap:12px"><div style="font-size:26px;color:var(--info);line-height:1">ℹ</div><div><p style="margin-top:0"><b>Nutzer gelöscht.</b></p><p style="margin-bottom:0">Bitte Paul Lehmann kontaktieren, damit eine vollständige Löschung stattfinden kann.</p></div></div>',buttons:[{label:'OK',pri:true}]});return false}},{label:'Abbrechen'}]});
 }
 async function zugangAnlegenDlg(p,nachErfassung){
  if(!p||!rolleOf(p)){toast('Ein BeLIS-Zugang ist nur für Führungskräfte des höheren Dienstes vorgesehen.',true);return}
@@ -2120,7 +2120,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.5.1 (Build 26.10.03)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.5.2 (Build 26.10.03)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
