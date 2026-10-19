@@ -332,7 +332,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.6.0 (Build 26.10.20)</div>
+    <div class="hm">BeLIS 5.6.1 (Build 26.10.20)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -984,7 +984,7 @@ function renderToolbar(){
  const allowed=x=>!x.bl||isBL();
  if(v.neu&&(!v.neuBL||isBL()))h+=b('neu','neu',v.neuLabel||'Neu',false,'Neu anlegen (F2)');
  if(v.edit)h+=b('edit','edit',v.editLabel||'Bearbeiten',!hasSel,'Öffnen/Bearbeiten (Enter)');
- if(v.del&&(v.delAll||isBL()))h+=b('del','del','Löschen',!hasSel,'Löschen (Entf)');
+ if(v.del&&(v.delAll||isBL())&&(!v.delIf||v.delIf()))h+=b('del','del','Löschen',!hasSel,'Löschen (Entf)');
  const ex=(v.extra||[]).map((x,i)=>[x,i]).filter(([x])=>allowed(x));
  if(ex.length){h+='<span class="tsep"></span>';ex.forEach(([x,i])=>{h+=b('x'+i,x.ic||'doc',x.l,(x.sel&&!hasSel),x.tip)})}
  h+='<span class="tsep"></span>';
@@ -998,7 +998,7 @@ function tbAct(a){
  const v=V[CUR];const id=SEL[CUR];
  if(a==='neu'){if(v.neu){if(v.neuBL&&!needBL())return;v.neu()}}
  else if(a==='edit'){if(v.edit&&id)v.edit(id)}
- else if(a==='del'){if(v.del&&id){if(!v.delAll&&!needBL())return;v.del(id)}}
+ else if(a==='del'){if(v.del&&id){if(!v.delAll&&!needBL())return;if(v.delIf&&!v.delIf()){toast('Keine Berechtigung zum Löschen.',true);return}v.del(id)}}
  else if(a==='print'){if(v.print)v.print()}
  else if(a==='ref'){refresh()}
  else if(a==='logout'){logout()}
@@ -1031,7 +1031,7 @@ function bindGrid(){
 }
 const ACT={};
 const fil=(k,d='')=>(FIL[CUR]&&FIL[CUR][k]!=null)?FIL[CUR][k]:d;
-const ST_MAP={aktiv:'ok',freigegeben:'ok','in Kraft':'ok',abgeschlossen:'n',bestanden:'ok',Zusage:'ok',Eingestellt:'ok',genehmigt:'ok',Ernannt:'ok',besetzt:'ok',vakant:'warn','n. b.':'n',Auswahlgespräch:'info',beurlaubt:'info',geplant:'info',laufend:'info',Entwurf:'n',Eingang:'info',Prüfung:'info',Einstellungstest:'info',Vorstellungsgespräch:'info','in Erprobung':'warn',Anhörung:'warn',eingeleitet:'warn',Ermittlung:'warn',offen:'warn',ausgesetzt:'n','krank gemeldet':'warn','im Urlaub':'info',abgemeldet:'warn',suspendiert:'err',gesperrt:'err',ausgesondert:'n',ausgeschieden:'n',Absage:'n',aufgehoben:'n',eingestellt:'n',abgelehnt:'err',zurückgezogen:'n','nicht bestanden':'err',überfällig:'err',erledigt:'n',inaktiv:'err'};
+const ST_MAP={'nicht erfasst':'warn',aktiv:'ok',freigegeben:'ok','in Kraft':'ok',abgeschlossen:'n',bestanden:'ok',Zusage:'ok',Eingestellt:'ok',genehmigt:'ok',Ernannt:'ok',besetzt:'ok',vakant:'warn','n. b.':'n',Auswahlgespräch:'info',beurlaubt:'info',geplant:'info',laufend:'info',Entwurf:'n',Eingang:'info',Prüfung:'info',Einstellungstest:'info',Vorstellungsgespräch:'info','in Erprobung':'warn',Anhörung:'warn',eingeleitet:'warn',Ermittlung:'warn',offen:'warn',ausgesetzt:'n','krank gemeldet':'warn','im Urlaub':'info',abgemeldet:'warn',suspendiert:'err',gesperrt:'err',ausgesondert:'n',ausgeschieden:'n',Absage:'n',aufgehoben:'n',eingestellt:'n',abgelehnt:'err',zurückgezogen:'n','nicht bestanden':'err',überfällig:'err',erledigt:'n',inaktiv:'err'};
 function stBadge(s){return `<span class="st ${ST_MAP[s]||'n'}">${esc(s||'–')}</span>`}
 
 /* ================= Übersicht ================= */
@@ -1129,7 +1129,11 @@ function stelleAntrag(art,pid,params,summary,begr){
  toast(`Antrag ${a.az} an die Behördenleitung übermittelt.`);
 }
 function antragDlgHint(){return isBL()?'':`<div class="hint info" id="antrHint" style="display:none">Diese Maßnahme ist der Behördenleitung vorbehalten. Mit dem Speichern wird ein <b>Antrag</b> zur Entscheidung an die Behördenleitung gestellt.</div>`}
-V.antraege={t:'Anträge',neuLabel:'Antrag stellen',neu(){pickPerson('Antrag stellen',pid=>antragNeu(pid))},count:()=>{const n=S.antraege.filter(a=>a.status==='offen'&&(isBL()||a.von===USER.pid)).length;return n||''},warn:()=>isBL()&&S.antraege.some(a=>a.status==='offen'),editLabel:'Anzeigen',
+const darfAntragLoeschen=()=>isBL()||(!!USER&&USER.rolle==='Leitung Wachbezirk');
+function antragLoeschen(id){const a=S.antraege.find(x=>x.id===id);if(!a)return;
+ if(!darfAntragLoeschen()){toast('Anträge können nur von der Behördenleitung und der Leitung Wachbezirk gelöscht werden.',true);return}
+ confirmDlg('Antrag löschen',`Antrag <b>${esc(a.az)}</b> (${esc(a.art)} – ${esc(pname(a.pid,1))}, Status: ${esc(a.status)}) endgültig löschen?${a.status==='genehmigt'?'<br><br>Die bereits verfügte Personalmaßnahme bleibt bestehen.':''}`,()=>{S.antraege=S.antraege.filter(x=>x.id!==id);delete SEL.antraege;dlgStack.slice().forEach(d=>d.close());save('antraege');log('Antrag gelöscht',a.az+': '+a.art+' '+pname(a.pid));render();toast('Antrag '+a.az+' gelöscht.')},'Löschen')}
+V.antraege={t:'Anträge',neuLabel:'Antrag stellen',delAll:true,delIf:darfAntragLoeschen,del(id){antragLoeschen(id)},neu(){pickPerson('Antrag stellen',pid=>antragNeu(pid))},count:()=>{const n=S.antraege.filter(a=>a.status==='offen'&&(isBL()||a.von===USER.pid)).length;return n||''},warn:()=>isBL()&&S.antraege.some(a=>a.status==='offen'),editLabel:'Anzeigen',
  render(){const st=fil('st','offen');
   const rows=S.antraege.filter(a=>(isBL()||wbOf((person(a.von)||{}).dienststelle)===myWB())&&(st==='alle'||a.status===st));
   if(!SORT.antraege)SORT.antraege={i:1,d:-1};
@@ -1138,7 +1142,7 @@ V.antraege={t:'Anträge',neuLabel:'Antrag stellen',neu(){pickPerson('Antrag stel
  edit(id){const a=S.antraege.find(x=>x.id===id);
   openDlg({title:'Antrag '+a.az,body:`<dl class="kv"><dt>Antrag vom</dt><dd>${fmtD(a.datum)}</dd><dt>Antragsteller/in</dt><dd>${esc(pname(a.von,1))} (${esc(wbOf((person(a.von)||{}).dienststelle))})</dd><dt>Maßnahme</dt><dd><b>${esc(a.art)}</b> – ${esc(a.summary)}</dd><dt>Betroffene/r</dt><dd>${esc(pname(a.pid,1))}, ${esc((person(a.pid)||{}).dienststelle||'')}</dd><dt>Wirksam ab</dt><dd>${fmtD(a.params.datum)}</dd>${a.params.betreff?`<dt>Betreff</dt><dd>${esc(a.params.betreff)}</dd>`:''}<dt>Begründung</dt><dd style="white-space:pre-wrap">${esc(a.begr)}</dd><dt>Status</dt><dd>${stBadge(a.status)}</dd>${a.entscheidung?`<dt>Entscheidung</dt><dd>${esc(a.entscheidung)} (${esc(a.entschVon||'')}, ${fmtD(a.entschDatum)})</dd>`:''}</dl>`,
    left:[{label:'Antrag drucken',close:false,fn:()=>printDoc(docAntrag(a),'Antrag '+a.az)},...(a.status==='genehmigt'||a.status==='abgelehnt'?[{label:'Bescheid drucken',close:false,fn:()=>printDoc(docAntragBescheid(a),'Bescheid zu Antrag '+a.az)}]:[]),...(a.status==='offen'?(isBL()?[{label:'Genehmigen',fn:()=>{setTimeout(()=>antragGenehmigen(a),10)}},{label:'Ablehnen',fn:()=>{setTimeout(()=>antragAblehnen(a),10)}}]:(a.von===USER.pid?[{label:'Zurückziehen',fn:()=>{a.status='zurückgezogen';save('antraege');log('Antrag zurückgezogen',a.az);render()}}]:[])):[])],
-   buttons:[{label:'Schließen',pri:true}]})},
+   buttons:[...(darfAntragLoeschen()?[{label:'Löschen',fn:()=>{setTimeout(()=>antragLoeschen(a.id),10)}}]:[]),{label:'Schließen',pri:true}]})},
  extra:[{l:'Genehmigen',ic:'check',sel:1,bl:1,fn:id=>antragGenehmigen(S.antraege.find(x=>x.id===id))},{l:'Ablehnen',ic:'del',sel:1,bl:1,fn:id=>antragAblehnen(S.antraege.find(x=>x.id===id))}]
 };
 function antragGenehmigen(a){
@@ -1350,39 +1354,57 @@ function neuePerson(title,fn){
 }
 
 /* ================= Personalverzeichnis ================= */
+/* Inhaber/innen aus dem Organisationsplan, die noch keine Personalakte haben */
+const TITEL_RE=/^((?:Prof\.\s*)?(?:Dr\.(?:\s*(?:jur|iur|med|rer\.\s*nat|phil)\.)?)?)\s*/i;
+const nNorm=s=>String(s||'').toLowerCase().replace(TITEL_RE,'').replace(/\s+/g,' ').trim();
+function zerlegeName(n){const m=String(n).trim().match(TITEL_RE);const titel=(m&&m[1]||'').trim();const t=String(n).trim().slice(m?m[0].length:0).split(/\s+/).filter(Boolean);
+ if(t.length<2)return{titel,vorname:'',nachname:t[0]||''};let k=t.length-1;if(k>1&&/^(von|van|de|zu|vom|der)$/i.test(t[k-1]))k--;return{titel,vorname:t.slice(0,k).join(' '),nachname:t.slice(k).join(' ')}}
+function personZuName(n){const z=zerlegeName(n);const nn=z.nachname.toLowerCase(),vn=z.vorname.toLowerCase().replace(/\.$/,'');
+ return S.personal.find(p=>p.status!=='ausgeschieden'&&String(p.nachname).toLowerCase()===nn&&(!vn||String(p.vorname||'').toLowerCase().startsWith(vn)))}
+function orgOffen(){const L=[];(S.org||[]).forEach(o=>String(o.inhaber||'').split(/\s*(?:&|,|\/|\bund\b)\s*/).map(x=>x.trim()).filter(Boolean).forEach((n,i)=>{
+  if(personZuName(n))return;const z=zerlegeName(n);
+  L.push({id:'org:'+o.id+':'+i,_org:true,orgId:o.id,lg:o.lg,titel:z.titel,vorname:z.vorname,nachname:z.nachname,dnr:'',dg:'',dienststelle:DST().includes(o.abt)?o.abt:o.abt,funktion:o.funktion,eintritt:'',befoerdert:'',status:'nicht erfasst'})}));return L}
+const istOrg=id=>String(id||'').startsWith('org:');
+function orgUebernehmen(id){const r=orgOffen().find(x=>x.id===id);if(!r){toast('Eintrag nicht mehr vorhanden.',true);render();return}
+ if(!isBL()&&r.lg==='hD'){toast('Führungskräfte des höheren Dienstes erfasst die Behördenleitung.',true);return}
+ personHinzufuegen({titel:r.titel,vorname:r.vorname,nachname:r.nachname,dienststelle:DST().includes(r.dienststelle)?r.dienststelle:'',funktion:r.funktion,dg:r.lg==='hD'?'PR':'PK',anrede:''},'Aus dem Organisationsplan: '+r.funktion)}
+const nurErfasst=fn=>id=>{if(istOrg(id)){orgUebernehmen(id);return}fn(id)};
 V.personal={t:'Personalverzeichnis',count:()=>S.personal.filter(p=>p.status!=='ausgeschieden').length,
  neuLabel:'Person hinzufügen',editLabel:'Personalakte',
  render(){
   const q=fil('q').toLowerCase(),ds=fil('ds'),st=fil('st','ohne ausgeschiedene'),dg=fil('dg');
-  const rows=S.personal.filter(p=>(!q||(p.nachname+' '+p.vorname+' '+p.dnr+' '+(p.funktion||'')+' '+p.dg+' '+(p.discord||'')).toLowerCase().includes(q))&&(!ds||p.dienststelle===ds)&&(!dg||p.dg===dg)&&(st==='alle'||(st==='ohne ausgeschiedene'?p.status!=='ausgeschieden':p.status===st)));
+  const passt=p=>(!q||(p.nachname+' '+p.vorname+' '+p.dnr+' '+(p.funktion||'')+' '+p.dg+' '+(p.discord||'')).toLowerCase().includes(q))&&(!ds||p.dienststelle===ds)&&(!dg||p.dg===dg);
+  const offen=orgOffen();
+  const rows=S.personal.filter(p=>passt(p)&&(st==='alle'||(st==='ohne ausgeschiedene'?p.status!=='ausgeschieden':p.status===st))).concat(['alle','ohne ausgeschiedene','nicht erfasst'].includes(st)?offen.filter(passt):[]);
   if(!SORT.personal)SORT.personal={i:0,d:1};
   const cnt={};S.personal.filter(p=>p.status!=='ausgeschieden').forEach(p=>cnt[p.dg]=(cnt[p.dg]||0)+1);
   return `<div class="filterbar"><label for="pq">Suche</label><input id="pq" type="search" data-fil="q" value="${esc(fil('q'))}" placeholder="Name, Personalnr., Funktion, Discord-ID" style="width:230px">
    <label>Abteilung</label><select data-fil="ds" style="width:auto">${opts(DST(),ds,'(alle)')}</select>
    <label>Amt</label><select data-fil="dg" style="width:auto">${opts(R().map(r=>({v:r.k,l:r.k+(cnt[r.k]?' ('+cnt[r.k]+')':'')})),dg,'(alle)')}</select>
-   <label>Status</label><select data-fil="st" style="width:auto">${opts(['ohne ausgeschiedene','alle',...PSTATUS],st)}</select></div>`+
+   <label>Status</label><select data-fil="st" style="width:auto">${opts(['ohne ausgeschiedene','alle',...PSTATUS,'nicht erfasst'],st)}</select></div>`+
+  (offen.length?`<div class="hint warn">${offen.length} Person(en) aus dem Organisationsplan haben noch keine Personalakte (Status „nicht erfasst“). Zum Übernehmen doppelklicken oder markieren und „Personalakte“ wählen.</div>`:'')+
   grid('personal',[
-   {l:'Personalnr.',f:r=>esc(r.dnr),mono:1,s:r=>r.dnr.replace(/\d+/,m=>m.padStart(6,'0'))},
-   {l:'Name',f:r=>'<b>'+esc(r.nachname)+'</b>',s:r=>r.nachname},
+   {l:'Personalnr.',f:r=>r._org?'<span style="color:var(--tx3)">–</span>':esc(r.dnr),mono:1,s:r=>r.dnr.replace(/\d+/,m=>m.padStart(6,'0'))},
+   {l:'Name',f:r=>r._org?'<i>'+esc(r.nachname)+'</i>':'<b>'+esc(r.nachname)+'</b>',s:r=>r.nachname},
    {l:'Vorname',f:r=>esc(r.vorname)+(r.titel?` <span style="color:var(--tx3)">${esc(r.titel)}</span>`:'')},
-   {l:'Amt',f:r=>esc(r.dg),s:r=>String(rankIdx(r.dg)+10).padStart(3,'0')},
-   {l:'Bes.',f:r=>esc(rank(r.dg).bes)},
+   {l:'Amt',f:r=>r._org?`<span style="color:var(--tx3)">(${esc(r.lg||'?')})</span>`:esc(r.dg),s:r=>String(rankIdx(r.dg)+10).padStart(3,'0')},
+   {l:'Bes.',f:r=>r._org?'':esc(rank(r.dg).bes)},
    {l:'Abteilung',f:r=>esc(r.dienststelle)},
    {l:'Funktion',f:r=>esc(r.funktion||'')},
    {l:'Einstellung',f:r=>fmtD(r.eintritt),s:r=>r.eintritt||''},
    {l:'Rangänderung',f:r=>r.befoerdert&&r.befoerdert!==r.eintritt?fmtD(r.befoerdert):'',s:r=>r.befoerdert||''},
    {l:'Tage i. D.',f:r=>r.eintritt&&r.status!=='ausgeschieden'?String(daysBetween(r.eintritt,today())):'',num:1,s:r=>r.eintritt?daysBetween(r.eintritt,today()):-1},
-   {l:'Status',f:r=>statusBadge(r)+(openDisz(r.id).length?' <span class="st err">Disz.</span>':'')+(rolleOf(r)?` <span class="st info">${rolleOf(r)==='Behördenleitung'?'BL':'LW'}</span>`:'')}
+   {l:'Status',f:r=>r._org?stBadge('nicht erfasst')+' <span style="color:var(--tx3);font-size:11px">Organisation</span>':statusBadge(r)+(openDisz(r.id).length?' <span class="st err">Disz.</span>':'')+(rolleOf(r)?` <span class="st info">${rolleOf(r)==='Behördenleitung'?'BL':'LW'}</span>`:'')}
   ],rows,S.personal.length<=5?'Noch keine weiteren Bediensteten erfasst. Mit „Person hinzufügen“ (F2) nehmen Sie Bedienstete auf.':'Keine Bediensteten gefunden.');
  },
  neu(){personHinzufuegen()},
- edit(id){personalakte(id)},
- del(id){personLoeschen(person(id))},
+ edit:nurErfasst(id=>personalakte(id)),
+ del(id){if(istOrg(id)){toast('Noch nicht erfasst – Einträge des Organisationsplans werden unter „Organisation“ geändert.',true);return}personLoeschen(person(id))},
  extra:[
-  {l:'Status ändern',ic:'edit',sel:1,tip:'aktiv, beurlaubt, krank gemeldet, suspendiert',fn:id=>statusAendern(id)},
+  {l:'Status ändern',ic:'edit',sel:1,tip:'aktiv, beurlaubt, krank gemeldet, suspendiert',fn:nurErfasst(id=>statusAendern(id))},
   {l:'Einstellung mit Urkunde',ic:'up',tip:'Neueinstellung als Personalmaßnahme mit Ernennungsurkunde',fn:()=>einstellen()},
   {l:'Import aus Tabelle',ic:'neu',bl:1,fn:()=>importDlg()},
-  {l:'Personalbogen',ic:'doc',sel:1,fn:id=>printDoc(docPersonalbogen(person(id)),'Personalbogen')}
+  {l:'Personalbogen',ic:'doc',sel:1,fn:nurErfasst(id=>printDoc(docPersonalbogen(person(id)),'Personalbogen'))}
  ],
  print(){const ds=fil('ds');const rows=S.personal.filter(p=>p.status!=='ausgeschieden'&&(!ds||p.dienststelle===ds)).sort((a,b)=>rankIdx(b.dg)-rankIdx(a.dg)||a.nachname.localeCompare(b.nachname));
   printDoc(docListe('Mitarbeiterverzeichnis'+(ds?' – '+ds:''),`Stand: ${fmtD(today())} · ${rows.length} Bedienstete`,['Personalnr.','Name, Vorname','Amt','Abteilung','Funktion','Einstellung'],rows.map(p=>[p.dnr,p.nachname+', '+p.vorname,p.dg,p.dienststelle,p.funktion||'',fmtD(p.eintritt)])),'Mitarbeiterverzeichnis')}
@@ -1407,17 +1429,17 @@ function importDlg(){
 }
 
 /* Person ohne Personalmaßnahme in das Verzeichnis aufnehmen (z. B. bereits im Dienst befindliche Bedienstete) */
-function personHinzufuegen(){
+function personHinzufuegen(pre,hinweis){pre=pre||{};
  if(!needEdit())return;
  if(!myDST().length){toast('Ihrem Bereich sind keine Abteilungen zugeordnet.',true);return}
- const F=[{t:'sep',l:'Personalien'},{k:'anrede',l:'Anrede',t:'select',o:['Herr','Frau'],empty:'(ohne)'},{k:'nachname',l:'Name',req:1},{k:'vorname',l:'Vorname',req:1},{k:'geb',l:'Geburtsdatum',t:'date'},
+ const F=[{t:'sep',l:'Personalien'},{k:'anrede',l:'Anrede',t:'select',o:['Herr','Frau'],empty:'(ohne)'},{k:'titel',l:'Akademischer Grad',ph:'z. B. Dr. jur.'},{k:'nachname',l:'Name',req:1},{k:'vorname',l:'Vorname',req:1},{k:'geb',l:'Geburtsdatum',t:'date'},
   {t:'sep',l:'Dienstverhältnis'},{k:'dnr',l:'Personalnummer',req:1,ph:'z. B. NRW-200'},
-  {k:'dg',l:'Amt',t:'select',req:1,o:()=>rankOpts(R().filter(r=>isBL()?!rolleOf({dg:r.k}):(!isHD(r.k)&&!rolleOf({dg:r.k}))))},
+  {k:'dg',l:'Amt',t:'select',req:1,o:()=>rankOpts(R().filter(r=>isBL()?!csv(S.meta.rollenBL).includes(r.k):(!isHD(r.k)&&!rolleOf({dg:r.k}))))},
   {k:'dienststelle',l:'Abteilung',t:'select',req:1,o:myDST},{k:'funktion',l:'Funktion'},
   {k:'eintritt',l:'Einstelldatum',t:'date'},{k:'befoerdert',l:'Letzte Rangänderung',t:'date'},
   {t:'sep',l:'Erreichbarkeit'},{k:'kontakt',l:'Tel.-Nummer'},{k:'discord',l:'Discord-ID'}];
  const next=()=>{const n=S.personal.map(p=>(String(p.dnr).match(/^NRW-(\d+)$/)||[])[1]).filter(Boolean).map(Number);return 'NRW-'+(n.length?Math.max(...n)+1:100)};
- openDlg({title:'Person hinzufügen',body:'<div class="hint info">Nimmt eine/n Bedienstete/n in das Personalverzeichnis auf, ohne Personalmaßnahme. Für Neueinstellungen mit Urkunde „Einstellung mit Urkunde“ verwenden.</div>'+formHtml(F,{anrede:'Herr',dnr:next(),dg:(R()[0]||{}).k,dienststelle:myDST()[0],eintritt:today()}),
+ openDlg({title:'Person hinzufügen',body:(hinweis?`<div class="hint warn">${esc(hinweis)} – bitte Personalnummer, Amt und Vornamen prüfen bzw. ergänzen.</div>`:'')+'<div class="hint info">Nimmt eine/n Bedienstete/n in das Personalverzeichnis auf, ohne Personalmaßnahme. Für Neueinstellungen mit Urkunde „Einstellung mit Urkunde“ verwenden.</div>'+formHtml(F,Object.assign({anrede:'Herr',dnr:next(),dg:(R()[0]||{}).k,dienststelle:myDST()[0],eintritt:today()},Object.fromEntries(Object.entries(pre).filter(([k,v])=>v!==''&&v!=null)))),
   buttons:[{label:'Hinzufügen',pri:true,fn:a=>{const v=readForm(a,F);if(!v)return false;
     if(S.personal.some(x=>x.dnr===v.dnr)){toast('Die Personalnummer '+v.dnr+' ist bereits vergeben.',true);a.q('#f_dnr').classList.add('bad');return false}
     const dup=S.personal.find(x=>x.status!=='ausgeschieden'&&x.nachname.toLowerCase()===v.nachname.toLowerCase()&&x.vorname.toLowerCase()===v.vorname.toLowerCase());
@@ -2143,7 +2165,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.6.0 (Build 26.10.20)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.6.1 (Build 26.10.20)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
