@@ -332,7 +332,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.6.5 (Build 26.10.20)</div>
+    <div class="hm">BeLIS 5.6.6 (Build 26.10.20)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -1329,15 +1329,29 @@ function versetzen(id){
 function statusAendern(id){
  if(!needScope(id))return;
  if(id===USER.pid){toast('Den eigenen Dienststatus kann nur eine andere Person der Behördenleitung ändern.',true);return}
- const p=person(id);if(p.status==='ausgeschieden'){toast('Bedienstete/r ist ausgeschieden.',true);return}
- const F=[{k:'status',l:'Neuer Status',t:'select',req:1,o:PSTATUS.filter(s=>s!=='ausgeschieden')},{k:'datum',l:'Ab',t:'date',req:1},{k:'bis',l:'Voraussichtlich bis',t:'date'},{k:'text',l:'Grund / Bemerkung',t:'textarea',rows:3}];
- const needA=s=>!isBL()&&(s==='suspendiert'||p.status==='suspendiert');
- openDlg({title:'Dienststatus ändern',size:'small',body:`${antragDlgHint()}<p style="margin-top:0">${esc(p.dg)} ${esc(p.nachname)}, ${esc(p.vorname)} – derzeit ${statusBadge(p)}</p>`+formHtml(F,{status:p.status,datum:today(),bis:p.statusBis||''}),
-  onOpen:a=>{const u=()=>{const s=a.q('#f_status').value;const na=needA(s);const h=a.q('#antrHint');if(h)h.style.display=na?'':'none';const show=ABWESEND.includes(s);a.q('#f_bis').style.display=show?'':'none';a.q('label[for="f_bis"]').style.display=show?'':'none'};a.q('#f_status').onchange=u;u()},
+ const p=person(id);
+ if(p.status==='ausgeschieden'&&!isBL()){toast('Die Wiederaufnahme ausgeschiedener Personen ist der Behördenleitung vorbehalten.',true);return}
+ const F=[{k:'status',l:'Neuer Status',t:'select',req:1,o:PSTATUS},{k:'grund',l:'Grund des Ausscheidens',t:'select',o:ENTL_GR},{k:'datum',l:'Ab',t:'date',req:1},{k:'bis',l:'Voraussichtlich bis',t:'date'},{k:'text',l:'Grund / Bemerkung',t:'textarea',rows:3}];
+ const needA=s=>!isBL()&&(s==='suspendiert'||s==='ausgeschieden'||p.status==='suspendiert');
+ openDlg({title:'Dienststatus ändern',size:'small',body:`${antragDlgHint()}<p style="margin-top:0">${esc(p.dg)} ${esc(p.nachname)}, ${esc(p.vorname)} – derzeit ${statusBadge(p)}</p>`+formHtml(F,{status:p.status,datum:today(),bis:p.statusBis||''})+'<div id="ausHint" style="margin-top:6px"></div>',
+  onOpen:a=>{const u=()=>{const s=a.q('#f_status').value;const na=needA(s);const h=a.q('#antrHint');if(h)h.style.display=na?'':'none';
+    const show=ABWESEND.includes(s);a.q('#f_bis').style.display=show?'':'none';a.q('label[for="f_bis"]').style.display=show?'':'none';
+    const aus=s==='ausgeschieden';a.q('#f_grund').style.display=aus?'':'none';a.q('label[for="f_grund"]').style.display=aus?'':'none';
+    a.q('label[for="f_datum"]').textContent=aus?'Mit Ablauf des':'Ab';
+    a.q('#ausHint').innerHTML=aus&&isBL()?'<div class="hint warn">Das Dienstverhältnis wird beendet (Personalmaßnahme „Entlassung“ mit Verfügung). Ein BeLIS-Zugang wird sofort entzogen. Die Akte bleibt unter Status „ausgeschieden“ erhalten.</div>':p.status==='ausgeschieden'&&!aus?'<div class="hint info">Die Person wird wieder in den Dienst aufgenommen.</div>':''};
+   a.q('#f_status').onchange=u;u()},
   buttons:[{label:'Übernehmen',pri:true,fn:a=>{const v=readForm(a,F);if(!v)return false;if(v.bis&&v.bis<v.datum){toast('„Voraussichtlich bis“ liegt vor dem Beginn.',true);return false}if(v.status===p.status&&(v.bis||'')===(p.statusBis||''))return;
+   if(v.status==='ausgeschieden'){
+    if(!v.grund){toast('Bitte den Grund des Ausscheidens auswählen.',true);a.q('#f_grund').classList.add('bad');return false}
+    if(!isBL()){stelleAntrag('Entlassung',id,{grund:v.grund,datum:v.datum,text:v.text},v.grund,v.text||v.grund);return}
+    const m=doEntl(id,v.grund,v.datum,v.text);toast(`${p.nachname} ist ausgeschieden. Ausgeschiedene sind im Personalverzeichnis über „Status: alle“ bzw. „ausgeschieden“ sichtbar.`);setTimeout(()=>printMassnahme(m),50);return}
    if(needA(v.status)){if(v.status!=='suspendiert'){toast('Die Aufhebung einer Dienstenthebung ist der Behördenleitung vorbehalten.',true);return false}stelleAntrag('Vorläufige Dienstenthebung',id,{datum:v.datum,text:v.text},p.status+' → suspendiert',v.text);return}
-   const m=doStatus(id,v.status,v.datum,v.text,ABWESEND.includes(v.status)?v.bis:'');if(v.status==='suspendiert')setTimeout(()=>printMassnahme(m),50)}},{label:'Abbrechen'}]});
+   const warAus=p.status==='ausgeschieden';
+   const m=doStatus(id,v.status,v.datum,v.text,ABWESEND.includes(v.status)?v.bis:'');
+   if(warAus){m.art='Wiederaufnahme in den Dienst';delete p.austritt;delete p.austrittGrund;save('personal','massnahmen');render()}
+   if(v.status==='suspendiert')setTimeout(()=>printMassnahme(m),50)}},{label:'Abbrechen'}]});
 }
+
 const ENTL_GR=['Entlassung auf eigenen Antrag','Entlassung während der Probezeit (mangelnde Bewährung)','Entlassung wegen dauerhafter Inaktivität','Entfernung aus dem Dienst (Disziplinarverfahren)','Entlassung wegen Regelverstoßes (Serverregelwerk)','Versetzung zu anderem Dienstherrn / Fraktionswechsel'];
 function entlassen(id){
  if(!needScope(id))return;
@@ -1419,7 +1433,8 @@ V.personal={t:'Personalverzeichnis',count:()=>S.personal.filter(p=>p.status!=='a
  edit:nurErfasst(id=>personalakte(id)),
  del(id){if(istOrg(id)){toast('Noch nicht erfasst – Einträge des Organisationsplans werden unter „Organisation“ geändert.',true);return}personLoeschen(person(id))},
  extra:[
-  {l:'Status ändern',ic:'edit',sel:1,tip:'aktiv, beurlaubt, krank gemeldet, suspendiert',fn:nurErfasst(id=>statusAendern(id))},
+  {l:'Status ändern',ic:'edit',sel:1,tip:'aktiv, im Urlaub, abgemeldet, beurlaubt, krank, suspendiert, ausgeschieden',fn:nurErfasst(id=>statusAendern(id))},
+  {l:'Ausscheiden',ic:'exit',sel:1,tip:'Person als ausgeschieden markieren (Entlassung)',fn:nurErfasst(id=>entlassen(id))},
   {l:'Einstellung mit Urkunde',ic:'up',tip:'Neueinstellung als Personalmaßnahme mit Ernennungsurkunde',fn:()=>einstellen()},
   {l:'Import aus Tabelle',ic:'neu',bl:1,fn:()=>importDlg()},
   {l:'Personalbogen',ic:'doc',sel:1,fn:nurErfasst(id=>printDoc(docPersonalbogen(person(id)),'Personalbogen'))}
@@ -1630,7 +1645,8 @@ V.benutzer={t:'Führungskräfte & Zugänge',editLabel:'Personalakte',neuLabel:'F
  edit(id){personalakte(id)},
  extra:[
   {l:'Zugang anlegen',ic:'neu',sel:1,fn:id=>zugangAnlegenDlg(person(id))},
-  {l:'Status ändern',ic:'edit',sel:1,tip:'aktiv, beurlaubt, krank gemeldet, suspendiert',fn:id=>statusAendern(id)},
+  {l:'Status ändern',ic:'edit',sel:1,tip:'aktiv, im Urlaub, abgemeldet, beurlaubt, krank, suspendiert, ausgeschieden',fn:id=>statusAendern(id)},
+  {l:'Ausscheiden',ic:'exit',sel:1,fn:id=>entlassen(id)},
   {l:'Löschen',ic:'del',sel:1,fn:id=>personLoeschen(person(id))},
   {l:'Farbe festlegen',ic:'edit',sel:1,fn:id=>farbeDlg(person(id))},
   {l:'Kennwort zurücksetzen',ic:'ref',sel:1,fn:id=>{if(!rolleOf(person(id))){toast('Diese Person hat keinen BeLIS-Zugang.',true);return}kennwortZuruecksetzen(person(id))}},
@@ -2188,7 +2204,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.6.5 (Build 26.10.20)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.6.6 (Build 26.10.20)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
