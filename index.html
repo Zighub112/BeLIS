@@ -332,7 +332,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.6.4 (Build 26.10.20)</div>
+    <div class="hm">BeLIS 5.6.5 (Build 26.10.20)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -1213,7 +1213,7 @@ const PF=()=>[
  {k:'dienststelle',l:'Dienststelle',t:'select',req:1,ro:1,o:DST},
  {k:'funktion',l:'Funktion / Verwendung'},
  {k:'rufname',l:'Funkrufname',ph:'z. B. Peter 11/12'},
- {k:'eintritt',l:'Diensteintritt',t:'date',req:1},{k:'befoerdert',l:'Letzte Beförderung',t:'date'},
+ {k:'eintritt',l:'Diensteintritt',t:'date'},{k:'befoerdert',l:'Letzte Beförderung',t:'date'},
  {k:'status',l:'Status',t:'select',o:PSTATUS,ro:1},
  {k:'kontakt',l:'Tel.-Nummer'},{k:'discord',l:'Discord-ID'}
 ];
@@ -1234,11 +1234,16 @@ function einstellen(pre={}){
   }},{label:'Abbrechen'}]});
 }
 function personalakte(id,tab){
- const p=person(id);if(!p)return;const edit=inScope(id);const F=PF().map(f=>f.k==='dnr'&&isBL()?Object.assign({},f,{ro:0,req:1}):f);
+ const p=person(id);if(!p)return;const edit=inScope(id);
+ /* Behördenleitung: Amt und Dienststelle frei änderbar; Leitung Wachbezirk: Ämter außerhalb des hD und Dienststellen im eigenen Wachbezirk */
+ const F=PF().map(f=>{if(f.k==='dnr'&&isBL())return Object.assign({},f,{ro:0,req:1});
+  if(f.k==='dg'&&edit)return Object.assign({},f,{ro:0,o:()=>rankOpts(R().filter(r=>isBL()||r.k===p.dg||!isHD(r.k)))});
+  if(f.k==='dienststelle'&&edit)return Object.assign({},f,{ro:0,o:()=>{const L=isBL()?DST():myDST();return L.includes(p.dienststelle)?L:[p.dienststelle,...L]}});
+  return f});
  let cur=tab||'st';
  const tabs=[['st','Stammdaten'],['lb','Laufbahn'],['d','Disziplinar'],['a','Anträge'],['v','Vermerke']];
  const body=()=>{
-  if(cur==='st')return (edit?'':'<div class="hint info">Nur Einsicht – die/der Bedienstete gehört nicht zu Ihrem Zuständigkeitsbereich.</div>')+formHtml(edit?F:F.map(f=>Object.assign({},f,{ro:1})),p)+`<div class="form" style="margin-top:4px"><label>Bereich</label><input type="text" readonly value="${esc(wbOf(p.dienststelle))}"><label>BeLIS-Zugang</label><input type="text" readonly value="${esc(rolleOf(p)?rolleOf(p)+((p.acc||{}).hash?' – Kennwort gesetzt':' – kein Kennwort'):'kein Zugang (Amt nicht berechtigt)')}"></div><div style="color:var(--tx3);margin-top:6px">Amt, Dienststelle und Status werden ausschließlich über Personalmaßnahmen geändert.${isBL()?' Einzelne Angaben löschen: Feld leeren und „Speichern“. Einträge in Laufbahn, Disziplinar, Anträgen und Vermerken lassen sich dort über „löschen“ entfernen.':''}</div>`;
+  if(cur==='st')return (edit?'':'<div class="hint info">Nur Einsicht – die/der Bedienstete gehört nicht zu Ihrem Zuständigkeitsbereich.</div>')+formHtml(edit?F:F.map(f=>Object.assign({},f,{ro:1})),p)+`<div class="form" style="margin-top:4px"><label>Bereich</label><input type="text" readonly value="${esc(wbOf(p.dienststelle))}"><label>BeLIS-Zugang</label><input type="text" readonly value="${esc(rolleOf(p)?rolleOf(p)+((p.acc||{}).hash?' – Kennwort gesetzt':' – kein Kennwort'):'kein Zugang (Amt nicht berechtigt)')}"></div><div style="color:var(--tx3);margin-top:6px">${edit?'Amt und Dienststelle können hier direkt berichtigt werden (wird protokolliert). Für Beförderungen mit Urkunde „Befördern (hD)“, für den Dienststatus „Status ändern“ verwenden.':'Nur Einsicht.'}${isBL()?' Einzelne Angaben löschen: Feld leeren und „Speichern“. Einträge in Laufbahn, Disziplinar, Anträgen und Vermerken lassen sich dort über „löschen“ entfernen.':''}</div>`;
   if(cur==='lb'){const ms=S.massnahmen.filter(m=>m.pid===id).sort((a,b)=>a.datum<b.datum?1:-1);
    return `<dl class="kv" style="margin-bottom:8px"><dt>Amtsbezeichnung</dt><dd>${esc(rank(p.dg).n)} (${esc(p.dg)}), Bes.-Gr. ${esc(rank(p.dg).bes)}</dd><dt>Laufbahngruppe</dt><dd>${esc({gD:'gehobener Dienst',hD:'höherer Dienst'}[rank(p.dg).lg]||'–')}</dd><dt>Diensteintritt</dt><dd>${fmtD(p.eintritt)} (${daysBetween(p.eintritt,today())} Tage)</dd><dt>Stehzeit im Amt</dt><dd>${stehzeit(p)??'–'} Tage</dd>${p.austritt?`<dt>Ausgeschieden</dt><dd>${fmtD(p.austritt)} – ${esc(p.austrittGrund||'')}</dd>`:''}</dl>`+
    `<div class="tw"><table class="grid" style="min-width:0"><thead><tr><th>Datum</th><th>Az.</th><th>Maßnahme</th><th>Von</th><th>Nach</th><th>Bemerkung</th>${isBL()?'<th></th>':''}</tr></thead><tbody>${ms.map(m=>`<tr><td>${fmtD(m.datum)}</td><td class="mono">${esc(m.az)}</td><td>${esc(m.art)}</td><td>${esc(m.von)}</td><td>${esc(m.nach)}</td><td>${esc(m.text)}</td>${isBL()?`<td style="width:56px"><a href="#" data-del="m|${m.id}" style="color:var(--err)">löschen</a></td>`:''}</tr>`).join('')||'<tr class="empty"><td colspan="7">Keine Maßnahmen erfasst.</td></tr>'}</tbody></table></div>`}
@@ -1250,8 +1255,14 @@ function personalakte(id,tab){
  const dlg=openDlg({title:`Personalakte – ${p.dg} ${p.nachname}, ${p.vorname} (DNr. ${p.dnr})`,size:'wide',
   body:`<div class="tabs">${tabs.map(t=>`<button data-tab="${t[0]}">${t[1]}</button>`).join('')}</div><div class="tabp" id="akteBody"></div>`,
   left:[{label:'Personalbogen drucken',close:false,fn:()=>printDoc(docPersonalbogen(p),'Personalbogen')},...(edit?[{label:'Status ändern …',fn:()=>{setTimeout(()=>statusAendern(id),10)}},...(isBL()?[{label:'Befördern (hD) …',fn:()=>{setTimeout(()=>befoerdern(id),10)}}]:[]),{label:'Antrag stellen …',fn:()=>{setTimeout(()=>antragNeu(id),10)}}]:[])],
-  buttons:[...(edit?[{label:'Speichern',pri:true,fn:a=>{if(cur!=='st'){render();return}const v=readForm(a,F);if(!v)return false;delete v.status;delete v.dg;delete v.dienststelle;if(!isBL())delete v.dnr;else if(v.dnr!==p.dnr&&S.personal.some(x=>x!==p&&x.dnr===v.dnr)){toast('Die Dienstnummer '+v.dnr+' ist bereits vergeben.',true);return false}
-    Object.assign(p,v);save('personal');log('Personalakte geändert',p.dnr+' '+p.nachname);render();toast('Personalakte gespeichert.')}}]:[]),{label:'Schließen'}]});
+  buttons:[...(edit?[{label:'Speichern',pri:true,fn:a=>{if(cur!=='st'){render();return}const v=readForm(a,F);if(!v)return false;delete v.status;if(!isBL())delete v.dnr;else if(v.dnr!==p.dnr&&S.personal.some(x=>x!==p&&x.dnr===v.dnr)){toast('Die Dienstnummer '+v.dnr+' ist bereits vergeben.',true);return false}
+    if(v.dg!==p.dg&&!isBL()&&isHD(v.dg)){toast('Ämter des höheren Dienstes vergibt die Behördenleitung (Befördern hD).',true);return false}
+    if(v.dienststelle!==p.dienststelle&&!isBL()&&!myDST().includes(v.dienststelle)){toast('Dienststellen außerhalb Ihres Wachbezirks: bitte Versetzung beantragen.',true);return false}
+    if(p.id===USER.pid&&(v.dg!==p.dg||v.dienststelle!==p.dienststelle)){toast('Das eigene Amt und die eigene Dienststelle ändert eine andere Person der Behördenleitung.',true);return false}
+    const aend=[];if(v.dg!==p.dg)aend.push('Amt '+p.dg+' → '+v.dg);if(v.dienststelle!==p.dienststelle)aend.push('Dienststelle '+p.dienststelle+' → '+v.dienststelle);
+    const warZugang=!!rolleOf(p);
+    Object.assign(p,v);save('personal');log('Personalakte geändert',p.dnr+' '+p.nachname+(aend.length?' ('+aend.join(', ')+')':''));render();toast('Personalakte gespeichert.'+(aend.length?' '+aend.join(', '):''));
+    if(!warZugang&&rolleOf(p)&&isBL())setTimeout(()=>zugangAnbieten(p),400)}}]:[]),{label:'Schließen'}]});
  const show=()=>{dlg.qa('[data-tab]').forEach(b=>b.classList.toggle('act',b.dataset.tab===cur));dlg.q('#akteBody').innerHTML=body();
   const qa=dlg.q('#qAdd');if(qa)qa.onclick=()=>{const q=dlg.q('#qSel').value;if(!q)return;p.quals.push({q,datum:dlg.q('#qDat').value||today()});save('personal');log('Qualifikation erfasst',p.nachname+': '+q);show()};
   dlg.qa('[data-qdel]').forEach(e=>e.onclick=ev=>{ev.preventDefault();const q=p.quals.splice(+e.dataset.qdel,1)[0];save('personal');log('Qualifikation entfernt',p.nachname+': '+q.q);show()});
@@ -2177,7 +2188,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.6.4 (Build 26.10.20)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.6.5 (Build 26.10.20)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
