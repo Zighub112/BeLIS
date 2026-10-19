@@ -332,7 +332,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.6.1 (Build 26.10.20)</div>
+    <div class="hm">BeLIS 5.6.3 (Build 26.10.20)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -1982,12 +1982,15 @@ function para(t){
   pbuf.push(line.trim());
  });flushP();flushU();return h;
 }
-function brief({an,az,betreff,body,rbb,datum,signKennung}){
- const z=zeichnung(signer(signKennung));
+/* Unterschrift in Schreibschrift: Initiale des Vornamens und Nachname */
+const schrift=p=>p?((p.vorname&&p.vorname.toLowerCase()!==String(p.nachname).toLowerCase()?p.vorname[0]+'. ':'')+p.nachname):'';
+function brief({an,az,betreff,body,rbb,datum,signKennung,nachr}){
+ const sg=signer(signKennung);const z=zeichnung(sg);
  return `<div class="paper">${kopf()}
  <div class="dmeta"><div class="dan">${an}</div><table class="dinfo"><tr><td>Aktenzeichen</td><td><b>${esc(az||'')}</b></td></tr><tr><td>Datum</td><td>${fmtD(datum||today())}</td></tr><tr><td>Bearbeitung</td><td>${esc(sb())}</td></tr></table></div>
  <div class="dtitel">${esc(betreff)}</div>${body}
- <div class="dsig"><p>Mit freundlichen Grüßen</p>${z.vz?`<p class="dvz">${esc(z.vz)}</p>`:''}<p class="dsn">${esc(z.name)}</p><p class="dsf">${esc(z.fkt)}</p></div>
+ <div class="dsig"><p>Mit freundlichen Grüßen</p>${z.vz?`<p class="dvz">${esc(z.vz)}</p>`:''}${sg?`<div class="dschr">${esc(schrift(sg))}</div><p>${esc(z.name)}</p>`:`<p class="dsn">${esc(z.name)}</p>`}<p class="dsf">${esc(z.fkt)}</p></div>
+ ${nachr?`<div class="dver">${nachr}</div>`:''}
  ${rbb?`<div class="drbb"><b>Rechtsbehelfsbelehrung</b><br>Gegen diese Verfügung kann innerhalb eines Monats nach Bekanntgabe Widerspruch erhoben werden. Der Widerspruch ist schriftlich oder zur Niederschrift bei der Behördenleitung des ${esc(S.meta.behoerde)} einzulegen.</div>`:''}${fuss()}</div>`;
 }
 const anP=p=>`${p.anrede==='Herr'?'Herrn':p.anrede==='Frau'?'Frau':''}<br><b>${esc(vollName(p))}</b><br>${esc(amtG(p.dg,p.anrede))}<br>${esc(p.dienststelle)}<br><i>– persönlich / vertraulich –</i>`;
@@ -2039,17 +2042,19 @@ function docAntrag(a){const p=person(a.pid)||{nachname:'?',vorname:'',dg:'',dnr:
  <div class="dtitel">Antrag: ${esc(a.art)}${a.params.betreff?' – '+esc(a.params.betreff):''}</div>
  <table class="t">${row('Betroffene/r',`<b>${esc(p.nachname)}, ${esc(p.vorname)}</b>, DNr. ${esc(p.dnr)}`)}${row('Derzeitiges Amt',esc(rank(p.dg).n)+' ('+esc(p.dg)+')')}${row('Dienststelle',esc(p.dienststelle))}${row('Beantragt',esc(a.summary))}${row('Wirksam ab',fmtD(a.params.datum))}</table>
  <div style="font-weight:700;margin-top:5mm">Begründung</div>${para(a.begr)}
- <div class="sig">${esc(v.nachname)}, ${esc(v.dg)}</div>
- <div style="margin-top:12mm;border:1px solid #888;padding:3mm 4mm;font-size:10pt"><b>Entscheidung der Behördenleitung</b><br>${a.status==='offen'?'☐ genehmigt &nbsp;&nbsp; ☐ abgelehnt<br><br>Datum, Unterschrift: ______________________':`${a.status==='genehmigt'?'☒ genehmigt':'☐ genehmigt'} &nbsp;&nbsp; ${a.status==='abgelehnt'?'☒ abgelehnt':'☐ abgelehnt'}${a.entscheidung&&a.status==='abgelehnt'?'<br>'+esc(a.entscheidung.replace(/^abgelehnt: /,'Begründung: ')):''}<br>${esc(a.entschVon||'')}, ${fmtD(a.entschDatum)}`}</div>${fuss()}</div>`}
+ <div class="dsig"><p>Mit freundlichen Grüßen</p>${person(a.von)?`<div class="dschr">${esc(schrift(v))}</div>`:''}<p>${esc(vollName(v))}</p><p class="dsf">${esc(amtG(v.dg,v.anrede))}</p></div>
+ <div style="margin-top:12mm;border:1px solid #888;padding:3mm 4mm;font-size:10pt"><b>Entscheidung der Behördenleitung</b><br>${a.status==='offen'?'☐ genehmigt &nbsp;&nbsp; ☐ abgelehnt<br><br>Datum, Unterschrift: ______________________':`${a.status==='genehmigt'?'☒ genehmigt':'☐ genehmigt'} &nbsp;&nbsp; ${a.status==='abgelehnt'?'☒ abgelehnt':'☐ abgelehnt'}${a.entscheidung&&a.status==='abgelehnt'?'<br>'+esc(a.entscheidung.replace(/^abgelehnt: /,'Begründung: ')):''}${(()=>{const e=a.entschKennung?signer(a.entschKennung):null;return e?`<div class="dschr" style="height:15mm;font-size:30pt;margin:1mm 0 3mm 2mm">${esc(schrift(e))}</div><div>${esc(vollName(e))}, ${esc(amtG(e.dg,e.anrede))} · ${fmtD(a.entschDatum)}</div>`:`<br>${esc(a.entschVon||'')}, ${fmtD(a.entschDatum)}`})()}`}</div>${fuss()}</div>`}
 /* Bescheid an die antragstellende Führungskraft (Genehmigung ohne Personalmaßnahme bzw. Ablehnung) */
 function docAntragBescheid(a){const p=person(a.pid)||{nachname:'?',vorname:'',dg:'',dnr:'',dienststelle:'',anrede:''};const v=person(a.von)||{nachname:'?',vorname:'',dg:'',dienststelle:'',anrede:''};
+ /* Der Bescheid richtet sich an die betroffene Person; die antragstellende Führungskraft erhält ihn nachrichtlich */
  const gen=a.status==='genehmigt';const was=a.art==='Sonstiger Antrag'?(a.params.betreff||'Sonstiger Antrag'):a.art+(a.summary?' ('+a.summary+')':'');
- const body=`${sgh(v)}<p>auf Ihren Antrag vom <b>${fmtD(a.datum)}</b> (Az. ${esc(a.az)}) betreffend <b>${esc(was)}</b> für ${esc(amtG(p.dg,p.anrede))} <b>${esc(vollName(p))}</b>${p.dnr?' ('+esc(p.dnr)+')':''}, ${esc(p.dienststelle)}, ergeht folgende Entscheidung:</p>
+ const vonTxt=`${esc(amtG(v.dg,v.anrede))} ${esc(vollName(v))}`;
+ const body=`${sgh(p)}<p>über den von ${vonTxt} am <b>${fmtD(a.datum)}</b> für Sie gestellten Antrag (Az. ${esc(a.az)}) betreffend <b>${esc(was)}</b> ergeht folgende Entscheidung:</p>
  <p style="margin-left:8mm;font-size:12pt"><b>${gen?'Dem Antrag wird stattgegeben.':'Der Antrag wird abgelehnt.'}</b></p>
  ${gen?`<p>Die Entscheidung gilt mit Wirkung vom <b>${fmtD(a.params.datum||a.entschDatum)}</b>.${a.art==='Sonstiger Antrag'?' Eine Personalmaßnahme ist damit nicht verbunden.':''}</p>`:`<p class="dh">Gründe:</p>${para(a.ablehnGrund||String(a.entscheidung||'').replace(/^abgelehnt:\s*/,''))}`}
- <p class="dh">Begründung des Antrages:</p>${para(a.begr)}
- <p>${gen?'Ich bitte Sie, die betroffene Person entsprechend in Kenntnis zu setzen.':'Ich bitte Sie, die betroffene Person über die Entscheidung in Kenntnis zu setzen.'}</p>`;
- return brief({an:`${v.anrede==='Herr'?'Herrn':v.anrede==='Frau'?'Frau':''}<br><b>${esc(vollName(v))}</b><br>${esc(amtG(v.dg,v.anrede))}<br>${esc(wbOf(v.dienststelle))}`,az:a.az,betreff:'Entscheidung über Ihren Antrag – '+was,body,datum:a.entschDatum,signKennung:a.entschKennung||(USER&&USER.kennung)})}
+ <p class="dh">Begründung des Antrages:</p>${para(a.begr)}`;
+ return brief({an:anP(p),az:a.az,betreff:'Entscheidung über den Antrag – '+was,body,datum:a.entschDatum,signKennung:a.entschKennung||(USER&&USER.kennung),nachr:`Nachrichtlich: ${vonTxt} (antragstellend), ${esc(wbOf(v.dienststelle))}`})}
+
 function docListe(title,sub,head,rows){return `<div class="paper">${kopf()}<div class="dtitel">${esc(title)}</div><div style="font-size:9pt;color:#444;margin:-3mm 0 4mm">${esc(sub)}</div><table class="t"><thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${head.length}">Keine Einträge.</td></tr>`}</tbody></table><div style="font-size:8.5pt;margin-top:4mm">Nur für den Dienstgebrauch.</div>${fuss()}</div>`}
 function docPersonalbogen(p){const r=rank(p.dg);const ms=S.massnahmen.filter(m=>m.pid===p.id).sort((a,b)=>a.datum<b.datum?-1:1);
  const row=(a,b)=>`<tr><th style="width:45mm">${esc(a)}</th><td>${b}</td></tr>`;
@@ -2165,7 +2170,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.6.1 (Build 26.10.20)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.6.3 (Build 26.10.20)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
