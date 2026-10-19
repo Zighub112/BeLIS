@@ -332,7 +332,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.5.4 (Build 26.10.03)</div>
+    <div class="hm">BeLIS 5.6.0 (Build 26.10.20)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -1084,7 +1084,7 @@ V.cockpit={t:'Übersicht',
    ${wv.length?`<ul class="wv">${wv.slice(0,12).map(w=>`<li><span class="d" style="${w.d<t?'color:var(--err);font-weight:600':w.d===t?'color:var(--warn);font-weight:600':''}">${fmtD(w.d)}</span><a data-act="gowv" data-id="${w.go}|${w.id}">${esc(w.t)}</a></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Keine Wiedervorlagen fällig.</div>'}
   </fieldset>
   <fieldset><legend>Termine – heute und die nächsten 7 Tage</legend>
-   ${(()=>{const L=termineIm(t,addDays(t,7),true);return L.length?`<ul class="wv">${L.slice(0,10).map(o=>`<li><span class="d" style="${o.d===t?'color:var(--warn);font-weight:600':''}">${o.d===t?'heute':WT[new Date(o.d+'T12:00').getDay()]+' '+fmtD(o.d).slice(0,6)}</span><span style="width:84px;flex:none;color:var(--tx2)">${esc(o.t.ganztag?'ganztägig':(o.t.von||''))}</span>${pdot(terminPerson(o.t))}<a data-act="termin" data-id="${o.t.id}">${esc(o.t.titel)}</a>${o.t.ort?`<span style="margin-left:auto;color:var(--tx3)">${esc(o.t.ort)}</span>`:''}</li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Keine Termine in den nächsten 7 Tagen.</div>'})()}
+   ${(()=>{const L=termineIm(t,addDays(t,7),true);return L.length?`<ul class="wv">${L.slice(0,10).map(o=>`<li><span class="d" style="${o.d===t?'color:var(--warn);font-weight:600':''}">${o.d===t?'heute':WT[new Date(o.d+'T12:00').getDay()]+' '+fmtD(o.d).slice(0,6)}</span><span style="width:84px;flex:none;color:var(--tx2)">${esc(o.n?tagZeit(o):(o.t.ganztag?'ganztägig':(o.t.von||'')))}</span>${pdot(terminPerson(o.t))}<a data-act="termin" data-id="${o.t.id}">${esc(o.t.titel)}</a>${o.t.ort?`<span style="margin-left:auto;color:var(--tx3)">${esc(o.t.ort)}</span>`:''}</li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Keine Termine in den nächsten 7 Tagen.</div>'})()}
   </fieldset>
   <fieldset><legend>Meine offenen Aufgaben</legend>
    ${(()=>{const L=S.todos.filter(x=>!x.erledigt&&betrifftMich(x.zustaendig)).sort((a,b)=>(a.faellig||'9')<(b.faellig||'9')?-1:1);return L.length?`<ul class="wv">${L.slice(0,8).map(x=>`<li><input type="checkbox" data-act="todochk" data-id="${x.id}" style="margin:0"><span class="d" style="${x.faellig&&x.faellig<t?'color:var(--err);font-weight:600':''}">${x.faellig?fmtD(x.faellig):'–'}</span><a data-act="todo" data-id="${x.id}">${esc(x.titel)}</a>${x.prio==='hoch'?'<span class="st err" style="margin-left:auto">hoch</span>':''}</li>`).join('')}</ul>${L.length>8?`<div style="color:var(--tx3)">… und ${L.length-8} weitere</div>`:''}`:'<div style="color:var(--tx3)">Keine offenen Aufgaben.</div>'})()}
@@ -1784,14 +1784,24 @@ function terminTage(t,von,bis){
   i++}
  return out;
 }
+/* Dauer eines Termins in Tagen (0 = eintägig) */
+const terminDauer=t=>t.datumBis&&t.datumBis>t.datum?daysBetween(t.datum,t.datumBis):0;
 function termineIm(von,bis,nurMeine){
- const L=[];S.termine.forEach(t=>{if(nurMeine&&!betrifftMich(t.teilnehmer))return;terminTage(t,von,bis).forEach(d=>L.push({t,d}))});
- return L.sort((a,b)=>(a.d+(a.t.ganztag?'00':a.t.von||'99'))<(b.d+(b.t.ganztag?'00':b.t.von||'99'))?-1:1);
+ const L=[];S.termine.forEach(t=>{if(nurMeine&&!betrifftMich(t.teilnehmer))return;const n=terminDauer(t);
+  terminTage(t,addDays(von,-n),bis).forEach(st=>{for(let i=0;i<=n;i++){const d=addDays(st,i);if(d>=von&&d<=bis)L.push({t,d,st,i,n})}})});
+ return L.sort((a,b)=>(a.d+(a.t.ganztag||a.i>0?'00':a.t.von||'99'))<(b.d+(b.t.ganztag||b.i>0?'00':b.t.von||'99'))?-1:1);
 }
 /* Farbe eines Termins: Person, für die er gilt – bei „alle“ oder mehreren die anlegende Person */
 const terminPerson=t=>{const tn=t.teilnehmer||['alle'];return tn.length===1&&tn[0]!=='alle'?tn[0]:t.von_pid};
 const chipStyle=t=>fil('fb','person')==='art'?'':(()=>{const c=farbe(terminPerson(t));return ` style="background:${hexA(c,.18)};border-left-color:${c};color:inherit"`})();
-const zeitTxt=t=>t.ganztag?'ganztägig':(t.von||'')+(t.bis?'–'+t.bis:'')+(t.von?' Uhr':'');
+const zeitTxt=(t,st)=>{const n=terminDauer(t);
+ if(!n)return t.ganztag?'ganztägig':(t.von||'')+(t.bis?'–'+t.bis:'')+(t.von?' Uhr':'');
+ const a=st||t.datum,e=addDays(a,n);
+ return t.ganztag?`${fmtD(a)} – ${fmtD(e)}`:`${fmtD(a)}${t.von?' '+t.von:''} – ${fmtD(e)}${t.bis?' '+t.bis:''}${t.von||t.bis?' Uhr':''}`};
+/* Kurzangabe für einen einzelnen Tag eines (mehrtägigen) Termins */
+const tagZeit=o=>{if(!o.n)return o.t.ganztag?'ganztägig':(o.t.von||'')+(o.t.bis?'–'+o.t.bis:'');
+ if(o.t.ganztag)return 'Tag '+(o.i+1)+'/'+(o.n+1);
+ return o.i===0?'ab '+(o.t.von||''):o.i===o.n?'bis '+(o.t.bis||''):'ganztägig'};
 V.kalender={t:'Terminkalender',neuLabel:'Neuer Termin',
  count:()=>{const n=termineIm(today(),today(),true).length;return n||''},
  extra:[{l:'Vormonat',ic:'ref',fn:()=>{KAL.m--;if(KAL.m<0){KAL.m=11;KAL.y--}render()}},{l:'Heute',ic:'ref',fn:()=>{const d=new Date();KAL.y=d.getFullYear();KAL.m=d.getMonth();KAL.sel=today();render()}},{l:'Folgemonat',ic:'ref',fn:()=>{KAL.m++;if(KAL.m>11){KAL.m=0;KAL.y++}render()}}],
@@ -1808,35 +1818,40 @@ V.kalender={t:'Terminkalender',neuLabel:'Neuer Termin',
   for(let w=start;w<=end;w=addDays(w,7)){
    h+=`<tr><td class="kw">${weekNo(new Date(w+'T12:00'))}</td>`;
    for(let i=0;i<7;i++){const d=addDays(w,i);const L=by[d]||[];const fremd=d.slice(5,7)!==pad(KAL.m+1);
-    h+=`<td class="kd${fremd?' fremd':''}${i>4?' we':''}${d===t0?' heute':''}${d===KAL.sel?' sel':''}" data-kd="${d}"><div class="kn">${+d.slice(8)}</div>${L.slice(0,3).map(o=>`<div class="kchip ${TERM_KAT[o.t.kat]||'kS'}"${chipStyle(o.t)} data-kt="${o.t.id}" title="${esc(zeitTxt(o.t)+' – '+o.t.titel)}">${o.t.ganztag?'':esc(o.t.von||'')+' '}${esc(o.t.titel)}</div>`).join('')}${L.length>3?`<div class="kmore">+${L.length-3} weitere</div>`:''}</td>`}
+    h+=`<td class="kd${fremd?' fremd':''}${i>4?' we':''}${d===t0?' heute':''}${d===KAL.sel?' sel':''}" data-kd="${d}"><div class="kn">${+d.slice(8)}</div>${L.slice(0,3).map(o=>`<div class="kchip ${TERM_KAT[o.t.kat]||'kS'}"${chipStyle(o.t)} data-kt="${o.t.id}" title="${esc(zeitTxt(o.t,o.st)+' – '+o.t.titel)}">${o.n?(o.i>0?'↳ ':''):''}${o.t.ganztag||(o.n&&o.i>0&&o.i<o.n)?'':esc(o.n&&o.i===o.n?'bis '+(o.t.bis||''):(o.t.von||''))+' '}${esc(o.t.titel)}</div>`).join('')}${L.length>3?`<div class="kmore">+${L.length-3} weitere</div>`:''}</td>`}
    h+='</tr>'}
   h+=`</tbody></table></div>`;
   const tag=(by[KAL.sel]||[]);
-  h+=`<fieldset style="margin-top:10px"><legend>${WT[new Date(KAL.sel+'T12:00').getDay()]}, ${fmtD(KAL.sel)}</legend>${tag.length?`<ul class="wv">${tag.map(o=>`<li><span class="d" style="width:110px">${esc(zeitTxt(o.t))}</span><span class="kchip ${TERM_KAT[o.t.kat]||'kS'}" style="flex:none">${esc(o.t.kat||'Sonstiges')}</span>${pdot(terminPerson(o.t))}<a data-act="termin" data-id="${o.t.id}"><b>${esc(o.t.titel)}</b></a><span style="color:var(--tx3)">${o.t.ort?esc(o.t.ort)+' · ':''}</span><span>${(o.t.teilnehmer||['alle']).map(pchip).join(' ')}</span><span style="color:var(--tx3)">${o.t.wdh&&o.t.wdh!=='keine'?' · '+esc(o.t.wdh):''}</span></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Keine Termine. Doppelklick auf einen Tag legt einen Termin an.</div>'}</fieldset>`;
+  h+=`<fieldset style="margin-top:10px"><legend>${WT[new Date(KAL.sel+'T12:00').getDay()]}, ${fmtD(KAL.sel)}</legend>${tag.length?`<ul class="wv">${tag.map(o=>`<li><span class="d" style="width:110px">${esc(tagZeit(o))}</span><span class="kchip ${TERM_KAT[o.t.kat]||'kS'}" style="flex:none">${esc(o.t.kat||'Sonstiges')}</span>${pdot(terminPerson(o.t))}<a data-act="termin" data-id="${o.t.id}"><b>${esc(o.t.titel)}</b></a><span style="color:var(--tx3)">${o.t.ort?esc(o.t.ort)+' · ':''}</span><span>${(o.t.teilnehmer||['alle']).map(pchip).join(' ')}</span><span style="color:var(--tx3)">${o.n?' · '+esc(zeitTxt(o.t,o.st)):''}${o.t.wdh&&o.t.wdh!=='keine'?' · '+esc(o.t.wdh):''}</span></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Keine Termine. Doppelklick auf einen Tag legt einen Termin an.</div>'}</fieldset>`;
   return h;
  },
  after(){document.querySelectorAll('#vBody [data-kd]').forEach(td=>{td.onclick=e=>{const c=e.target.closest('[data-kt]');if(c){terminDlg(c.dataset.kt);return}KAL.sel=td.dataset.kd;render()};td.ondblclick=e=>{if(e.target.closest('[data-kt]'))return;terminDlg(null,td.dataset.kd)}})},
  neu(){terminDlg(null,KAL.sel||today())},
- print(){const von=`${KAL.y}-${pad(KAL.m+1)}-01`,bis=isoDate(new Date(KAL.y,KAL.m+1,0,12));const L=termineIm(von,bis,fil('nur','alle')==='meine');
-  printDoc(docListe('Terminübersicht '+MONATE[KAL.m]+' '+KAL.y,S.meta.behoerde+' · Stand: '+fmtD(today()),['Datum','Zeit','Termin','Art','Ort','Teilnehmende'],L.map(o=>[WT[new Date(o.d+'T12:00').getDay()]+', '+fmtD(o.d),zeitTxt(o.t),o.t.titel,o.t.kat||'',o.t.ort||'',(o.t.teilnehmer||['alle']).map(kurzName).join(', ')])),'Terminübersicht')}
+ print(){const von=`${KAL.y}-${pad(KAL.m+1)}-01`,bis=isoDate(new Date(KAL.y,KAL.m+1,0,12));const seen=new Set();const L=termineIm(von,bis,fil('nur','alle')==='meine').filter(o=>{const k=o.t.id+'|'+o.st;if(seen.has(k))return false;seen.add(k);return true});
+  printDoc(docListe('Terminübersicht '+MONATE[KAL.m]+' '+KAL.y,S.meta.behoerde+' · Stand: '+fmtD(today()),['Datum','Zeit','Termin','Art','Ort','Teilnehmende'],L.map(o=>[WT[new Date(o.st+'T12:00').getDay()]+', '+fmtD(o.st)+(o.n?' – '+fmtD(addDays(o.st,o.n)):''),o.n?(o.t.ganztag?'ganztägig':(o.t.von||'')+'–'+(o.t.bis||'')):zeitTxt(o.t),o.t.titel,o.t.kat||'',o.t.ort||'',(o.t.teilnehmer||['alle']).map(kurzName).join(', ')])),'Terminübersicht')}
 };
 ACT.termin=id=>terminDlg(id);
 function terminDlg(id,datum){
  const t=id?S.termine.find(x=>x.id===id):null;if(id&&!t)return;
- const F=[{k:'titel',l:'Termin',req:1},{k:'kat',l:'Art',t:'select',o:Object.keys(TERM_KAT)},{k:'datum',l:'Datum',t:'date',req:1},
-  {k:'ganztag',l:'Ganztägig',t:'select',o:[{v:'',l:'nein'},{v:'1',l:'ja'}]},{k:'von',l:'Beginn',t:'time'},{k:'bis',l:'Ende',t:'time'},{k:'ort',l:'Ort',ph:'z. B. Sitzungssaal Präsidium, Discord'},
+ const F=[{k:'titel',l:'Termin',req:1},{k:'kat',l:'Art',t:'select',o:Object.keys(TERM_KAT)},
+  {t:'sep',l:'Zeitraum'},{k:'datum',l:'Datum von',t:'date',req:1},{k:'datumBis',l:'Datum bis',t:'date',req:1},
+  {k:'ganztag',l:'Ganztägig',t:'select',o:[{v:'',l:'nein'},{v:'1',l:'ja'}]},{k:'von',l:'Uhrzeit von',t:'time'},{k:'bis',l:'Uhrzeit bis',t:'time'},
+  {t:'sep',l:'Weitere Angaben'},{k:'ort',l:'Ort',ph:'z. B. Sitzungssaal Präsidium, Discord'},
   {k:'wdh',l:'Wiederholung',t:'select',o:['keine','wöchentlich','zweiwöchentlich','monatlich']},{k:'wdhBis',l:'Wiederholen bis',t:'date'},{k:'notiz',l:'Beschreibung',t:'textarea',rows:4}];
- const o=t?Object.assign({},t,{ganztag:t.ganztag?'1':''}):{datum:datum||today(),kat:'Dienstbesprechung',von:'20:00',bis:'21:00',wdh:'keine'};
+ const o=t?Object.assign({},t,{ganztag:t.ganztag?'1':'',datumBis:t.datumBis||t.datum}):{datum:datum||today(),datumBis:datum||today(),kat:'Dienstbesprechung',von:'20:00',bis:'21:00',wdh:'keine'};
  const darf=!t||isBL()||t.von_pid===USER.pid;
  openDlg({title:t?'Termin – '+t.titel:'Neuer Termin',body:formHtml(F,o)+teilnehmerHtml(t?t.teilnehmer:['alle'])+(t?`<div style="color:var(--tx3);margin-top:8px">Angelegt von ${esc(kurzName(t.von_pid))} am ${fmtTs(t.erstellt)}${t.wdh&&t.wdh!=='keine'?' · Änderungen gelten für die gesamte Serie.':''}</div>`:''),
-  onOpen:a=>{const g=()=>{const gt=a.q('#f_ganztag').value==='1';['von','bis'].forEach(k=>a.q('#f_'+k).disabled=gt)};a.q('#f_ganztag').onchange=g;g()},
+  onOpen:a=>{const g=()=>{const gt=a.q('#f_ganztag').value==='1';['von','bis'].forEach(k=>a.q('#f_'+k).disabled=gt)};a.q('#f_ganztag').onchange=g;g();
+   let alt=a.q('#f_datum').value;a.q('#f_datum').onchange=()=>{const d=a.q('#f_datum').value,b=a.q('#f_datumBis');if(!b.value||b.value===alt||b.value<d)b.value=d;alt=d}},
   left:t&&darf?[{label:t.wdh&&t.wdh!=='keine'?'Serie löschen':'Löschen',fn:()=>{setTimeout(()=>confirmDlg('Termin löschen',`Termin „${esc(t.titel)}“${t.wdh&&t.wdh!=='keine'?' (gesamte Serie)':''} löschen?`,()=>{S.termine=S.termine.filter(x=>x.id!==t.id);save('termine');log('Termin gelöscht',t.titel);render()},'Löschen'),10)}},
    ...(t.wdh&&t.wdh!=='keine'&&datum?[]:[])]:[],
   buttons:[{label:'Speichern',pri:true,fn:a=>{const v=readForm(a,F);if(!v)return false;v.ganztag=v.ganztag==='1';
-    if(!v.ganztag&&v.von&&v.bis&&v.bis<v.von){toast('Das Ende liegt vor dem Beginn.',true);return false}
+    if(!v.datumBis||v.datumBis<v.datum){toast('„Datum bis“ liegt vor „Datum von“.',true);a.q('#f_datumBis').classList.add('bad');return false}
+    if(!v.ganztag&&v.datumBis===v.datum&&v.von&&v.bis&&v.bis<v.von){toast('Die Uhrzeit bis liegt vor der Uhrzeit von.',true);return false}
+    if(v.datumBis===v.datum)v.datumBis='';
     if(v.wdh!=='keine'&&v.wdhBis&&v.wdhBis<v.datum){toast('„Wiederholen bis“ liegt vor dem Datum.',true);return false}
     v.teilnehmer=readTeilnehmer(a);
-    if(t){Object.assign(t,v);log('Termin geändert',t.titel+' ('+fmtD(t.datum)+')')}
+    if(t){Object.assign(t,v);log('Termin geändert',t.titel+' ('+zeitTxt(t)+')')}
     else{const n=Object.assign({id:uid(),von_pid:USER.pid,erstellt:new Date().toISOString()},v);S.termine.push(n);log('Termin angelegt',n.titel+' ('+fmtD(n.datum)+')')}
     KAL.sel=v.datum;const d=new Date(v.datum+'T12:00');KAL.y=d.getFullYear();KAL.m=d.getMonth();save('termine');render()}},{label:'Abbrechen'}]});
 }
@@ -2128,7 +2143,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.5.4 (Build 26.10.03)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.6.0 (Build 26.10.20)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
