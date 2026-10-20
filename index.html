@@ -332,7 +332,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.6.6 (Build 26.10.20)</div>
+    <div class="hm">BeLIS 5.6.8 (Build 26.10.21)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -574,9 +574,33 @@ const Store={timers:{},last:{},unsub:[],
 /* Zugriffsliste für die Firestore-Regeln: wer lesen/schreiben darf, ergibt sich aus der Personalakte.
    Nur die Behördenleitung schreibt sie – automatisch nach jeder Änderung des Personals. */
 let ZUGANG_LAST='';
+/* Anmeldekennung einer Person: fest gespeichert (acc.login) – sonst aus dem Nachnamen gebildet.
+   Gibt es den Nachnamen mehrfach im Personalbestand, wird für neue Konten die Personalnummer verwendet. */
+const kennungMail=p=>(p&&p.acc&&p.acc.login)||loginMail(p.nachname);
+const kennungText=p=>{const m=kennungMail(p);return m===loginMail(p.nachname)?p.nachname:(m===loginMail(p.dnr)?p.dnr:m.split('@')[0])};
+const keinZugang=p=>!!(p&&p.acc&&p.acc.keinZugang);
+const nameDoppelt=p=>S.personal.some(x=>x.id!==p.id&&x.status!=='ausgeschieden'&&String(x.nachname).trim().toLowerCase()===String(p.nachname).trim().toLowerCase());
+const nameDoppeltMitZugang=p=>S.personal.some(x=>x.id!==p.id&&x.status!=='ausgeschieden'&&rolleOf(x)&&!keinZugang(x)&&String(x.nachname).trim().toLowerCase()===String(p.nachname).trim().toLowerCase());
+function neueKennung(p){if(p.acc&&p.acc.login)return p.acc.login;
+ if(!nameDoppelt(p)){const m=loginMail(p.nachname);if(!S.personal.some(x=>x.id!==p.id&&x.acc&&x.acc.login===m))return m}
+ return p.dnr?loginMail(p.dnr):''}
+/* Bereinigung (Behördenleitung): Konten eindeutig zuordnen; falsche „Konto vorhanden“-Kennzeichen bei Namensdoppelungen entfernen */
+function kennungenBereinigen(){if(!isBL())return;let ch=false;
+ const groups={};S.personal.filter(p=>p.status!=='ausgeschieden').forEach(p=>{const k=String(p.nachname).trim().toLowerCase();(groups[k]=groups[k]||[]).push(p)});
+ Object.values(groups).forEach(G=>{
+  if(G.length===1){const p=G[0];if(p.acc&&!p.acc.login&&(p.acc.kontoAm||p.acc.last)){p.acc.login=loginMail(p.nachname);ch=true}return}
+  const nm=loginMail(G[0].nachname);
+  const mitZ=G.filter(p=>rolleOf(p)&&!keinZugang(p));
+  let echt=G.filter(p=>p.acc&&(p.acc.login===nm||(!p.acc.login&&p.acc.last)));
+  if(!echt.length&&mitZ.length===1&&mitZ[0].acc&&mitZ[0].acc.kontoAm)echt=[mitZ[0]];
+  G.forEach(p=>{if(!p.acc)return;
+   if(!p.acc.login&&echt.length===1&&echt[0]===p){p.acc.login=nm;ch=true}
+   else if(!p.acc.login&&(p.acc.kontoAm||p.acc.last)&&!echt.includes(p)){delete p.acc.kontoAm;delete p.acc.last;ch=true}
+   else if(!p.acc.login&&p.acc.kontoAm&&echt.length!==1){delete p.acc.kontoAm;ch=true}})});
+ if(ch){save('personal');log('Anmeldekennungen bereinigt','Namensdoppelungen eindeutig zugeordnet')}}
 function zugangListe(){
- const F=S.personal.filter(p=>rolleOf(p)&&p.status!=='ausgeschieden'&&p.status!=='suspendiert'&&!(p.acc&&p.acc.gesperrt));
- return{alle:F.map(p=>loginMail(p.nachname)).sort(),bl:F.filter(p=>rolleOf(p)==='Behördenleitung').map(p=>loginMail(p.nachname)).sort()};
+ const F=S.personal.filter(p=>rolleOf(p)&&!keinZugang(p)&&p.status!=='ausgeschieden'&&p.status!=='suspendiert'&&!(p.acc&&p.acc.gesperrt));
+ return{alle:F.map(kennungMail).sort(),bl:F.filter(p=>rolleOf(p)==='Behördenleitung').map(kennungMail).sort()};
 }
 function zugangSync(force){
  if(!FB||!FB.auth.currentUser||!USER||!isBL())return Promise.resolve();
@@ -588,11 +612,12 @@ function zugangSync(force){
    sonst löscht sich das Konto beim nächsten Anmeldeversuch selbst. */
 const geloeschtDoc=()=>FB.db.collection('zugang').doc('geloescht');
 function kontoZumLoeschen(email){return geloeschtDoc().set({emails:firebase.firestore.FieldValue.arrayUnion(email),stand:firebase.firestore.FieldValue.serverTimestamp(),by:USER?USER.kennung:''},{merge:true})}
-function kontoNichtLoeschen(email){return geloeschtDoc().set({emails:firebase.firestore.FieldValue.arrayRemove(email)},{merge:true}).catch(()=>{})}
+function kontoNichtLoeschen(email){if(!email)return Promise.resolve();return geloeschtDoc().set({emails:firebase.firestore.FieldValue.arrayRemove(email)},{merge:true}).catch(()=>{})}
 /* Anmeldekonto anlegen – ohne die eigene Sitzung zu beenden (zweite Firebase-Instanz).
    Reihenfolge: direkt (Registrierung erlaubt) → Cloud Function (Blaze) → Anleitung Konsole */
 async function kontoAnlegen(p){
- const email=loginMail(p.nachname),pw=S.meta.stdPw||'';
+ const email=neueKennung(p),pw=S.meta.stdPw||'';
+ if(!email)return{ok:false,grund:'Der Nachname ist mehrfach vergeben und die Person hat keine Personalnummer. Bitte zuerst eine Personalnummer eintragen.'};
  if(pw.length<6)return{ok:false,grund:'Standardkennwort fehlt (Stammdaten, mind. 6 Zeichen).'};
  await kontoNichtLoeschen(email);
  try{
@@ -891,8 +916,11 @@ async function afterAuth(user,pw){
  if(!any||!S.personal.length){offerSetup(()=>afterAuth(user,pw));return}
  if(normalize())KEYS.forEach(k=>Store.push(k));
  const email=String(user.email||'').toLowerCase();
- const hits=S.personal.filter(p=>p.status!=='ausgeschieden'&&(loginMail(p.nachname)===email||loginMail(p.dnr)===email));
- if(hits.length>1){await denyAuth('Der Nachname ist nicht eindeutig. Bitte ein Konto mit der Personalnummer anlegen lassen.');return}
+ let hits=S.personal.filter(p=>p.status!=='ausgeschieden'&&p.acc&&p.acc.login===email);
+ if(!hits.length)hits=S.personal.filter(p=>p.status!=='ausgeschieden'&&rolleOf(p)&&!keinZugang(p)&&!(p.acc&&p.acc.login)&&(loginMail(p.nachname)===email||(p.dnr&&loginMail(p.dnr)===email)));
+ if(hits.length>1){const h2=hits.filter(p=>p.acc&&p.acc.last);if(h2.length===1)hits=h2}
+ if(hits.length>1){const h3=hits.filter(p=>p.acc&&p.acc.kontoAm);if(h3.length===1)hits=h3}
+ if(hits.length>1){await denyAuth('Dieses Konto lässt sich nicht eindeutig zuordnen, weil mehrere Führungskräfte denselben Nachnamen haben. Die Behördenleitung muss unter „Führungskräfte & Zugänge“ den Zugang der betroffenen Person neu anlegen – die Anmeldung erfolgt dann mit der Personalnummer.');return}
  const p=hits[0];
  if(!p){await denyAuth(`Zu diesem Konto (${email.split('@')[0]}) gibt es keine passende Personalakte in BeLIS.`);return}
  const rolle=rolleOf(p);
@@ -906,7 +934,8 @@ async function afterAuth(user,pw){
 function finishLogin(p){
  const rolle=rolleOf(p);
  USER={pid:p.id,kennung:p.nachname.toUpperCase(),name:p.nachname+', '+p.dg,rolle,wb:wbOf(p.dienststelle),login:new Date().toISOString()};
- p.acc=p.acc||{};p.acc.last=USER.login;save('personal');
+ p.acc=p.acc||{};p.acc.last=USER.login;if(!p.acc.login&&FB&&FB.auth.currentUser)p.acc.login=String(FB.auth.currentUser.email||'').toLowerCase();save('personal');
+ try{kennungenBereinigen()}catch(e){}
  try{ensureFarben()}catch(e){}
  zugangSync(true);
  $('#login').style.display='none';
@@ -1641,10 +1670,18 @@ V.benutzer={t:'Führungskräfte & Zugänge',editLabel:'Personalakte',neuLabel:'F
  count:()=>S.personal.filter(p=>isHD(p.dg)&&p.status!=='ausgeschieden').length||'',
  render(){const nur=fil('z','alle');const rows=S.personal.filter(p=>isHD(p.dg)&&p.status!=='ausgeschieden'&&(nur==='alle'||hatKonto(p)===(nur==='mit'))).sort((a,b)=>rankIdx(b.dg)-rankIdx(a.dg)||a.nachname.localeCompare(b.nachname));
   return `<div class="hint info">Die Anmeldung erfolgt mit <b>Nachname und Kennwort</b> über Firebase. Alle Führungskräfte des höheren Dienstes haben Anspruch auf einen BeLIS-Zugang. Ablauf: <b>Führungskraft erfassen</b> → <b>Zugang anlegen</b> (Konto mit Standardkennwort, Freigabe des Datenzugriffs). Rollen: <b>${esc(csv(S.meta.rollenBL).join(', '))}</b> Behördenleitung (Vollzugriff) · <b>${esc(csv(S.meta.rollenLW).join(', '))}</b> Leitung Wachbezirk · übrige hD <b>Führungskraft</b> (Lesezugriff im eigenen Wachbezirk, Anträge, Termine, Aufgaben, Notizen). <b>Sperren</b> entzieht den Zugriff vorübergehend, <b>Löschen</b> entfernt die Person vollständig.</div><div class="filterbar"><label>Anzeige</label><select data-fil="z" style="width:auto">${opts([{v:'alle',l:'alle Führungskräfte (hD)'},{v:'mit',l:'nur mit angelegtem Konto'},{v:'ohne',l:'nur ohne Konto'}],nur)}</select></div>`+
-  grid('benutzer',[{l:'Farbe',f:r=>rolleOf(r)?`<i class="pdot" style="background:${farbe(r.id)};width:14px;height:14px"></i>`:'',w:'44px'},{l:'Name',f:r=>'<b>'+esc(r.nachname)+'</b>, '+esc(r.vorname)+(r.titel?', '+esc(r.titel):'')},{l:'Amt',f:r=>esc(r.dg),s:r=>String(rankIdx(r.dg)+10).padStart(3,'0')},{l:'Funktion',f:r=>esc(r.funktion||'')},{l:'Dienststatus',f:r=>statusBadge(r)},{l:'BeLIS-Rolle',f:r=>rolleOf(r)?esc(rolleOf(r))+(rolleOf(r)==='Leitung Wachbezirk'?' ('+esc(wbOf(r.dienststelle))+')':''):'<span style="color:var(--tx3)">kein Zugang</span>'},{l:'Anmeldekennung',f:r=>rolleOf(r)?esc(loginMail(r.nachname)):'',mono:1},{l:'Konto',f:r=>{if(!rolleOf(r))return '';const a=r.acc||{};if(!hatKonto(r))return '<span class="st n">kein Konto</span>';return a.gesperrt?stBadge('gesperrt'):a.must?'<span class="st warn">Kennwortwechsel verlangt</span>':a.last?'<span class="st ok">aktiv</span>':'<span class="st n">noch nicht angemeldet</span>'}},{l:'Letzte Anmeldung',f:r=>fmtTs((r.acc||{}).last)}],rows,'Keine Führungskräfte des höheren Dienstes erfasst.')},
+  grid('benutzer',[{l:'Farbe',f:r=>rolleOf(r)?`<i class="pdot" style="background:${farbe(r.id)};width:14px;height:14px"></i>`:'',w:'44px'},{l:'Name',f:r=>'<b>'+esc(r.nachname)+'</b>, '+esc(r.vorname)+(r.titel?', '+esc(r.titel):'')},{l:'Amt',f:r=>esc(r.dg),s:r=>String(rankIdx(r.dg)+10).padStart(3,'0')},{l:'Funktion',f:r=>esc(r.funktion||'')},{l:'Dienststatus',f:r=>statusBadge(r)},{l:'BeLIS-Rolle',f:r=>rolleOf(r)?esc(rolleOf(r))+(rolleOf(r)==='Leitung Wachbezirk'?' ('+esc(wbOf(r.dienststelle))+')':''):'<span style="color:var(--tx3)">kein Zugang</span>'},{l:'Anmeldung mit',f:r=>{if(!rolleOf(r)||keinZugang(r))return '';const t=kennungText(r);const fest=r.acc&&r.acc.login;return `<b>${esc(t)}</b>`+(!fest&&!hatKonto(r)&&nameDoppeltMitZugang(r)?' <span class="st warn">Name doppelt</span>':'')},mono:1},{l:'Konto',f:r=>{if(!rolleOf(r))return '';const a=r.acc||{};if(keinZugang(r))return '<span class="st n">kein Zugang erforderlich</span>';if(!hatKonto(r))return '<span class="st n">kein Konto</span>';return a.gesperrt?stBadge('gesperrt'):a.must?'<span class="st warn">Kennwortwechsel verlangt</span>':a.last?'<span class="st ok">aktiv</span>':'<span class="st n">noch nicht angemeldet</span>'}},{l:'Letzte Anmeldung',f:r=>fmtTs((r.acc||{}).last)}],rows,'Keine Führungskräfte des höheren Dienstes erfasst.')},
  edit(id){personalakte(id)},
  extra:[
-  {l:'Zugang anlegen',ic:'neu',sel:1,fn:id=>zugangAnlegenDlg(person(id))},
+  {l:'Zugang anlegen',ic:'neu',sel:1,fn:id=>{const p=person(id);if(keinZugang(p)){toast('Für diese Person ist „kein Zugang erforderlich“ gesetzt. Bitte zuerst wieder aufheben.',true);return}zugangAnlegenDlg(p)}},
+  {l:'Kein Zugang nötig',ic:'del',sel:1,tip:'Person benötigt keinen BeLIS-Zugang (z. B. bei gleichem Nachnamen)',fn:id=>{const p=person(id);p.acc=p.acc||{};
+    if(p.acc.keinZugang){delete p.acc.keinZugang;save('personal');log('Zugangsverzicht aufgehoben',p.nachname);render();toast(p.nachname+': Zugang kann wieder angelegt werden.');return}
+    confirmDlg('Kein Zugang erforderlich',`${esc(p.dg)} <b>${esc([p.vorname,p.nachname].filter(Boolean).join(' '))}</b> benötigt keinen BeLIS-Zugang?<br><br>Die Person wird bei der Anmeldung und der Zugriffsfreigabe nicht mehr berücksichtigt – auch nicht bei gleichem Nachnamen.`,()=>{p.acc.keinZugang=true;delete p.acc.kontoAm;delete p.acc.login;delete p.acc.must;save('personal');log('Kein Zugang erforderlich',p.dnr+' '+p.nachname);render()},'Bestätigen')}},
+  {l:'Konto zuordnen',ic:'akte',sel:1,tip:'Bestehendes Konto (Anmeldung mit Nachnamen) dieser Person zuordnen',fn:id=>{const p=person(id);if(!rolleOf(p)){toast('Diese Person hat kein Amt mit BeLIS-Zugang.',true);return}
+    const m=loginMail(p.nachname);const andere=S.personal.filter(x=>x.id!==p.id&&x.acc&&(x.acc.login===m||(!x.acc.login&&(x.acc.kontoAm||x.acc.last))&&String(x.nachname).toLowerCase()===String(p.nachname).toLowerCase()));
+    confirmDlg('Konto zuordnen',`Das Konto mit der Anmeldung <b>${esc(p.nachname)}</b> gehört zu ${esc(p.dg)} <b>${esc([p.vorname,p.nachname].filter(Boolean).join(' '))}</b>?${andere.length?`<br><br>Bei ${andere.map(x=>esc(x.vorname+' '+x.nachname)).join(', ')} wird das Konto-Kennzeichen entfernt.`:''}`,()=>{
+     andere.forEach(x=>{if(x.acc.login===m)delete x.acc.login;delete x.acc.kontoAm;delete x.acc.last});p.acc=p.acc||{};p.acc.login=m;p.acc.kontoAm=p.acc.kontoAm||new Date().toISOString();delete p.acc.keinZugang;
+     save('personal');zugangSync(true);log('Konto zugeordnet',p.nachname+' ('+p.dnr+')');render();toast(`Konto „${p.nachname}“ ist jetzt ${p.vorname} ${p.nachname} zugeordnet.`)},'Zuordnen')}},
   {l:'Status ändern',ic:'edit',sel:1,tip:'aktiv, im Urlaub, abgemeldet, beurlaubt, krank, suspendiert, ausgeschieden',fn:id=>statusAendern(id)},
   {l:'Ausscheiden',ic:'exit',sel:1,fn:id=>entlassen(id)},
   {l:'Löschen',ic:'del',sel:1,fn:id=>personLoeschen(person(id))},
@@ -1661,7 +1698,8 @@ V.benutzer={t:'Führungskräfte & Zugänge',editLabel:'Personalakte',neuLabel:'F
 async function kennwortZuruecksetzen(p){
  if(!needBL())return;
  if(p.id===USER.pid){toast('Das eigene Kennwort ändern Sie über Datei › Kennwort ändern.',true);return}
- const std=S.meta.stdPw||'';const mail=loginMail(p.nachname);
+ const std=S.meta.stdPw||'';const mail=kennungMail(p);
+ if(!hatKonto(p)){toast('Für diese Person ist noch kein Konto angelegt – bitte „Zugang anlegen“.',true);return}
  if(std.length<6){toast('Bitte zuerst unter Stammdaten ein Standardkennwort (mind. 6 Zeichen) festlegen.',true);return}
  confirmDlg('Kennwort zurücksetzen',`Das Kennwort von <b>${esc(p.dg)} ${esc(p.nachname)}</b> wird auf das Standardkennwort <b>${esc(std)}</b> gesetzt. Bei der nächsten Anmeldung muss ein neues Kennwort festgelegt werden.`,async()=>{
   let ok=false,neu=false,err='';
@@ -1677,7 +1715,7 @@ async function kennwortZuruecksetzen(p){
    <p>Der Kennwortwechsel bei der nächsten Anmeldung ist in BeLIS bereits vorgemerkt. An den Daten und Zugriffsregeln ändert sich nichts.</p><p style="color:var(--tx3)">Einmal eingerichtet (siehe Anleitung, Abschnitt „Kennwort-Zurücksetzen aus BeLIS“), geht das künftig mit einem Klick.</p>`,buttons:[{label:'OK',pri:true}]});
  },'Zurücksetzen');
 }
-const hatKonto=p=>!!(p&&p.acc&&(p.acc.kontoAm||p.acc.last||p.acc.hash));
+const hatKonto=p=>!!(p&&p.acc&&!p.acc.keinZugang&&(p.acc.kontoAm||p.acc.last||p.acc.hash||p.acc.login));
 function zugangAnbieten(p,nachErfassung){
  openDlg({title:'BeLIS-Zugang',size:'small',body:`<p style="margin-top:0">${nachErfassung?'<b>'+esc(p.dg)+' '+esc(p.nachname)+'</b> wurde erfasst und in die Datenbank übernommen.':'Mit dem Amt <b>'+esc(p.dg)+'</b> hat '+esc(p.nachname)+' Anspruch auf einen BeLIS-Zugang.'}</p><p>Rolle: <b>${esc(rolleOf(p))}</b>. Jetzt das Anmeldekonto anlegen?</p>`,
   buttons:[{label:'Zugang anlegen',pri:true,fn:()=>{setTimeout(()=>zugangAnlegenDlg(p,false),10)}},{label:'Später'}]});
@@ -1694,7 +1732,7 @@ function personLoeschen(p){
   <p style="margin:0">Für reguläre Abgänge besser „Entlassung“ verwenden – dann bleibt die Akte nachvollziehbar.</p>
   <div class="form" style="margin-top:8px"><label>Zur Bestätigung Nachnamen eingeben</label><input type="text" id="delConf" autocomplete="off"></div></div></div>`,
   buttons:[{label:'Endgültig löschen',pri:true,fn:async a=>{if(a.q('#delConf').value.trim().toLowerCase()!==p.nachname.toLowerCase()){a.q('#delConf').classList.add('bad');toast('Nachname stimmt nicht überein.',true);return false}
-    const mail=loginMail(p.nachname);
+    const mail=kennungMail(p);
     S.personal=S.personal.filter(x=>x.id!==p.id);S.org.forEach(o=>{if(o.inhaber&&o.inhaber.toLowerCase().includes(p.nachname.toLowerCase())&&o.inhaber.toLowerCase().includes((p.vorname||'').toLowerCase()))o.inhaber=''});
     delete SEL.personal;delete SEL.benutzer;await Store.write('personal');Store.push('org');await zugangSync(true);
     let vorgemerkt=false;try{await kontoZumLoeschen(mail);vorgemerkt=true}catch(e){}
@@ -1705,12 +1743,12 @@ async function zugangAnlegenDlg(p,nachErfassung){
  if(!p||!rolleOf(p)){toast('Ein BeLIS-Zugang ist nur für Führungskräfte des höheren Dienstes vorgesehen.',true);return}
  if(!isBL()){toast('Zugänge legt die Behördenleitung an.',true);return}
  msg('Anmeldekonto wird angelegt …');
- const r=await kontoAnlegen(p);const std=S.meta.stdPw||'';const mail=loginMail(p.nachname);
- p.acc=Object.assign(p.acc||{},{must:true,gesperrt:false,kontoAm:new Date().toISOString()});Store.write('personal');await zugangSync(true);
+ const r=await kontoAnlegen(p);const std=S.meta.stdPw||'';const mail=neueKennung(p);
+ if(r.ok&&mail)p.acc=Object.assign(p.acc||{},{login:mail,must:true,gesperrt:false,kontoAm:new Date().toISOString()});else p.acc=Object.assign(p.acc||{},{gesperrt:false});Store.write('personal');await zugangSync(true);
  if(r.ok&&r.vorhanden){log('Zugang freigegeben',p.nachname+' (Konto bestand bereits)');render();
   infoDlg('Zugang freigegeben',`<p style="margin-top:0">Für <b>${esc(p.nachname)}</b> besteht bereits ein Anmeldekonto. Der Zugriff auf die Datenbank ist freigegeben.</p><p>Falls das Kennwort unbekannt ist: <b>Kennwort zurücksetzen</b>.</p>`);return}
  if(r.ok){log('Zugang angelegt',p.nachname);render();
-  infoDlg('Zugang angelegt',`<p style="margin-top:0">${nachErfassung?'Die Führungskraft wurde erfasst und ':''}${esc(p.dg)} <b>${esc(p.nachname)}</b> kann sich ab sofort anmelden:</p><dl class="kv"><dt>Nachname</dt><dd><b>${esc(p.nachname)}</b></dd><dt>Kennwort</dt><dd><b style="font-family:Consolas,monospace;user-select:all">${esc(std)}</b></dd></dl><p>Bei der ersten Anmeldung muss ein eigenes Kennwort festgelegt werden.</p>`);return}
+  infoDlg('Zugang angelegt',`<p style="margin-top:0">${nachErfassung?'Die Führungskraft wurde erfasst und ':''}${esc(p.dg)} <b>${esc(p.nachname)}</b> kann sich ab sofort anmelden:</p><dl class="kv"><dt>Anmeldung mit</dt><dd><b>${esc(kennungText(p))}</b>${kennungText(p)!==p.nachname?' <span style="color:var(--warn)">(Personalnummer – der Nachname ist mehrfach vergeben)</span>':''}</dd><dt>Kennwort</dt><dd><b style="font-family:Consolas,monospace;user-select:all">${esc(std)}</b></dd></dl><p>Bei der ersten Anmeldung muss ein eigenes Kennwort festgelegt werden.</p>`);return}
  render();
  if(r.grund&&r.grund!=='gesperrt'){toast('Konto konnte nicht angelegt werden: '+r.grund,true);return}
  openDlg({title:'Zugang anlegen – noch ein Schritt',body:`<div class="hint info">${nachErfassung?'Die Führungskraft ist in der Datenbank erfasst und für den Datenzugriff freigegeben. ':''}Das Anmeldekonto konnte nicht automatisch angelegt werden, weil in Firebase die Registrierung neuer Konten ausgeschaltet ist.</div>
@@ -1718,7 +1756,7 @@ async function zugangAnlegenDlg(p,nachErfassung){
   <p><b>Oder jetzt von Hand:</b> Authentication › Users › <b>Nutzer hinzufügen</b> mit E-Mail <code style="user-select:all">${esc(mail)}</code> und Kennwort <code style="user-select:all">${esc(std)}</code>.</p>`,buttons:[{label:'OK',pri:true}]});
 }
 function firestoreRules(){
- const bl=S.personal.filter(p=>rolleOf(p)==='Behördenleitung'&&p.status!=='ausgeschieden').map(p=>loginMail(p.nachname));
+ const bl=S.personal.filter(p=>rolleOf(p)==='Behördenleitung'&&p.status!=='ausgeschieden').map(kennungMail);
  return `rules_version = '2';
 // BeLIS – Zugriffsregeln (erzeugt am ${fmtD(today())})
 // Wer zugreifen darf, steht in der Zugriffsliste "zugang/liste". BeLIS pflegt sie automatisch
@@ -2204,7 +2242,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.6.6 (Build 26.10.20)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.6.8 (Build 26.10.21)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
