@@ -342,7 +342,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.7.2 (Build 26.10.22)</div>
+    <div class="hm">BeLIS 5.7.3 (Build 26.10.22)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -874,8 +874,12 @@ function formHtml(fields,obj={}){
 }
 function readForm(api,fields){
  const o={};let ok=true;
- fields.forEach(f=>{if(f.t==='sep')return;const e=api.q('#f_'+f.k);if(!e)return;const v=e.value.trim();o[f.k]=f.t==='number'?(v===''?'':Number(v)):v;e.classList.remove('bad');if(f.req&&!v){e.classList.add('bad');ok=false}});
+ let datumFehler='';
+ fields.forEach(f=>{if(f.t==='sep')return;const e=api.q('#f_'+f.k);if(!e)return;const v=e.value.trim();o[f.k]=f.t==='number'?(v===''?'':Number(v)):v;e.classList.remove('bad');if(f.req&&!v){e.classList.add('bad');ok=false}
+  /* Tippfehler wie 2030 statt 2026 abfangen: Jahr mehr als 2 Jahre in der Zukunft oder vor 1950 */
+  if(f.t==='date'&&v&&!f.frei){const y=+v.slice(0,4),jetzt=new Date().getFullYear();if(y>jetzt+2||(y<1950&&f.k!=='geb')||y<1900){e.classList.add('bad');datumFehler=(f.l||'Datum')+': '+fmtD(v)}}});
  if(!ok){toast('Bitte alle Pflichtfelder (*) ausfüllen.',true);return null}
+ if(datumFehler){toast('Bitte das Datum prüfen – '+datumFehler+' liegt außerhalb des zulässigen Zeitraums.',true);return null}
  return o;
 }
 
@@ -1104,7 +1108,9 @@ V.cockpit={t:'Übersicht',
   const fk=S.personal.filter(p=>isHD(p.dg)&&p.status!=='ausgeschieden').sort((a,b)=>rankIdx(b.dg)-rankIdx(a.dg)||a.nachname.localeCompare(b.nachname));
   const hin=[];if(isBL()&&offA)hin.push(`${offA} Antrag/Anträge zur Entscheidung.`);if(fristD)hin.push(`${fristD} Disziplinarfrist(en) in den nächsten 7 Tagen.`);
   const scopeTxt=isBL()?'Gesamtbehörde':USER.wb;
-  const last=inM.slice().sort((a,b)=>(a.datum+a.az)<(b.datum+b.az)?1:-1).slice(0,8);
+  const last=inM.filter(m=>m.datum<=t).sort((a,b)=>(a.datum+a.az)<(b.datum+b.az)?1:-1).slice(0,8);
+  const kuenftig=inM.filter(m=>m.datum>t).sort((a,b)=>a.datum<b.datum?-1:1);
+  const mTxt=m=>{const p=person(m.pid);const n=p?esc(p.nachname)+(p.vorname?', '+esc(p.vorname):''):'–';const vn=m.von||m.nach?` <span style="color:var(--tx2)">(${esc(m.von||'?')} → ${esc(m.nach||'?')})</span>`:'';return `${esc(m.art)}: ${n}${vn}`};
   return `${over?`<div class="hint err">Es bestehen ${over} überfällige Wiedervorlage(n). ${hin.join(' ')}</div>`:hin.length?`<div class="hint warn">${hin.join(' ')}</div>`:''}
   <div class="cols">
   <fieldset><legend>Vorgangslage – ${esc(scopeTxt)}</legend><dl class="kv">
@@ -1132,7 +1138,7 @@ V.cockpit={t:'Übersicht',
    <ul class="wv">${fk.map(p=>`<li><span style="width:58px;flex:none;font-weight:600">${rolleOf(p)?pdot(p.id):''}${esc(p.dg)}</span><span>${esc(p.nachname)}${p.vorname?', '+esc(p.vorname):''}${p.titel?', '+esc(p.titel):''}${p.id===USER.pid?' <span style="color:var(--tx3)">(Sie)</span>':''}</span><span style="margin-left:auto;color:var(--tx2);text-align:right">${rolleOf(p)==='Behördenleitung'?'Behördenleitung':rolleOf(p)==='Leitung Wachbezirk'?esc(wbOf(p.dienststelle)):esc(p.funktion||p.dienststelle)}${p.status!=='aktiv'?' '+statusBadge(p):''}</span></li>`).join('')||'<li style="color:var(--tx3)">Keine Führungskräfte erfasst.</li>'}${fk.length>8?'':''}</ul>
   </fieldset>
   <fieldset><legend>Letzte Personalmaßnahmen</legend>
-   ${last.length?`<ul class="wv">${last.map(m=>`<li><span class="d">${fmtD(m.datum)}</span><span>${esc(m.art)}: ${esc(pname(m.pid,1))}${m.nach&&m.art!=='Versetzung'?' → '+esc(m.nach):''}${m.art==='Versetzung'?' → '+esc(m.nach):''}</span><a style="margin-left:auto;white-space:nowrap" data-act="akte" data-id="${m.pid}">Akte</a></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Noch keine Maßnahmen verfügt.</div>'}
+   ${kuenftig.length?`<div style="color:var(--tx2);font-weight:600;margin-bottom:2px">Vorgemerkt (künftig wirksam)</div><ul class="wv" style="margin-bottom:8px">${kuenftig.map(m=>`<li><span class="d" style="color:var(--warn)">ab ${fmtD(m.datum)}</span><span class="wvt">${mTxt(m)}</span><a style="white-space:nowrap" data-act="akte" data-id="${m.pid}">Akte</a></li>`).join('')}</ul>`:''}${last.length?`<ul class="wv">${last.map(m=>`<li><span class="d">${fmtD(m.datum)}</span><span class="wvt">${mTxt(m)}</span><a style="white-space:nowrap" data-act="akte" data-id="${m.pid}">Akte</a></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Noch keine Maßnahmen verfügt.</div>'}
   </fieldset>
   ${isBL()?`<fieldset style="grid-column:1/-1"><legend>Letzte Vorgänge</legend>
    ${grid('cockpitlog',[{l:'Zeitpunkt',f:r=>fmtTs(r.ts)},{l:'Benutzer',f:r=>esc(r.user),mono:1},{l:'Aktion',f:r=>esc(r.aktion)},{l:'Objekt',f:r=>esc(r.objekt)}],S.protokoll.slice(0,8).map((r,i)=>Object.assign({id:'l'+i},r)))}
@@ -1285,7 +1291,7 @@ function personalakte(id,tab){
   if(cur==='st')return (edit?'':'<div class="hint info">Nur Einsicht – die/der Bedienstete gehört nicht zu Ihrem Zuständigkeitsbereich.</div>')+formHtml(edit?F:F.map(f=>Object.assign({},f,{ro:1})),p)+`<div class="form" style="margin-top:4px"><label>Bereich</label><input type="text" readonly value="${esc(wbOf(p.dienststelle))}"><label>BeLIS-Zugang</label><input type="text" readonly value="${esc(rolleOf(p)?rolleOf(p)+((p.acc||{}).hash?' – Kennwort gesetzt':' – kein Kennwort'):'kein Zugang (Amt nicht berechtigt)')}"></div><div style="color:var(--tx3);margin-top:6px">${edit?'Amt und Dienststelle können hier direkt berichtigt werden (wird protokolliert). Für Beförderungen mit Urkunde „Befördern (hD)“, für den Dienststatus „Status ändern“ verwenden.':'Nur Einsicht.'}${isBL()?' Einzelne Angaben löschen: Feld leeren und „Speichern“. Einträge in Laufbahn, Disziplinar, Anträgen und Vermerken lassen sich dort über „löschen“ entfernen.':''}</div>`;
   if(cur==='lb'){const ms=S.massnahmen.filter(m=>m.pid===id).sort((a,b)=>a.datum<b.datum?1:-1);
    return `<dl class="kv" style="margin-bottom:8px"><dt>Amtsbezeichnung</dt><dd>${esc(rank(p.dg).n)} (${esc(p.dg)}), Bes.-Gr. ${esc(rank(p.dg).bes)}</dd><dt>Laufbahngruppe</dt><dd>${esc({gD:'gehobener Dienst',hD:'höherer Dienst'}[rank(p.dg).lg]||'–')}</dd><dt>Diensteintritt</dt><dd>${fmtD(p.eintritt)} (${daysBetween(p.eintritt,today())} Tage)</dd><dt>Stehzeit im Amt</dt><dd>${stehzeit(p)??'–'} Tage</dd>${p.austritt?`<dt>Ausgeschieden</dt><dd>${fmtD(p.austritt)} – ${esc(p.austrittGrund||'')}</dd>`:''}</dl>`+
-   `<div class="tw"><table class="grid" style="min-width:0"><thead><tr><th>Datum</th><th>Az.</th><th>Maßnahme</th><th>Von</th><th>Nach</th><th>Bemerkung</th>${isBL()?'<th></th>':''}</tr></thead><tbody>${ms.map(m=>`<tr><td>${fmtD(m.datum)}</td><td class="mono">${esc(m.az)}</td><td>${esc(m.art)}</td><td>${esc(m.von)}</td><td>${esc(m.nach)}</td><td>${esc(m.text)}</td>${isBL()?`<td style="width:56px"><a href="#" data-del="m|${m.id}" style="color:var(--err)">löschen</a></td>`:''}</tr>`).join('')||'<tr class="empty"><td colspan="7">Keine Maßnahmen erfasst.</td></tr>'}</tbody></table></div>`}
+   `<div class="tw"><table class="grid" style="min-width:0"><thead><tr><th>Datum</th><th>Az.</th><th>Maßnahme</th><th>Von</th><th>Nach</th><th>Bemerkung</th>${isBL()?'<th></th>':''}</tr></thead><tbody>${ms.map(m=>`<tr><td>${fmtD(m.datum)}</td><td class="mono">${esc(m.az)}</td><td>${esc(m.art)}</td><td>${esc(m.von)}</td><td>${esc(m.nach)}</td><td>${esc(m.text)}</td>${isBL()?`<td style="width:110px;white-space:nowrap"><a href="#" data-mdat="${m.id}">Datum</a> · <a href="#" data-del="m|${m.id}" style="color:var(--err)">löschen</a></td>`:''}</tr>`).join('')||'<tr class="empty"><td colspan="7">Keine Maßnahmen erfasst.</td></tr>'}</tbody></table></div>`}
   if(cur==='a'){const as=S.antraege.filter(a=>a.pid===id).sort((a,b)=>a.datum<b.datum?1:-1);return `<div class="tw"><table class="grid" style="min-width:0"><thead><tr><th>Az.</th><th>Datum</th><th>Maßnahme</th><th>Inhalt</th><th>Antragsteller/in</th><th>Status</th>${isBL()?'<th></th>':''}</tr></thead><tbody>${as.map(a=>`<tr><td class="mono">${esc(a.az)}</td><td>${fmtD(a.datum)}</td><td>${esc(a.art)}</td><td>${esc(a.summary)}</td><td>${esc(pname(a.von,1))}</td><td>${stBadge(a.status)}</td>${isBL()?`<td style="width:56px"><a href="#" data-del="a|${a.id}" style="color:var(--err)">löschen</a></td>`:''}</tr>`).join('')||'<tr class="empty"><td colspan="7">Keine Anträge.</td></tr>'}</tbody></table></div>`}
   if(cur==='d'){const ds=S.disziplinar.filter(d=>d.pid===id);return `<div class="tw"><table class="grid" style="min-width:0"><thead><tr><th>Az.</th><th>Eingeleitet</th><th>Kurzfassung</th><th>Status</th><th>Maßnahme</th>${isBL()?'<th></th>':''}</tr></thead><tbody>${ds.map(d=>`<tr><td class="mono">${esc(d.az)}</td><td>${fmtD(d.eingeleitet)}</td><td>${esc(d.kurzfassung||d.vorwurf)}</td><td>${stBadge(d.status)}</td><td>${esc(d.massnahme)}</td>${isBL()?`<td style="width:56px"><a href="#" data-del="d|${d.id}" style="color:var(--err)">löschen</a></td>`:''}</tr>`).join('')||'<tr class="empty"><td colspan="6">Keine Disziplinarvorgänge.</td></tr>'}</tbody></table></div>`}
   if(cur==='v')return `${edit?`<div class="form" style="grid-template-columns:1fr auto;margin-bottom:8px"><textarea id="vTx" rows="2" placeholder="Aktenvermerk erfassen …"></textarea><button class="btn" id="vAdd" style="align-self:start">Vermerk hinzufügen</button></div>`:''}
@@ -1306,6 +1312,11 @@ function personalakte(id,tab){
   const qa=dlg.q('#qAdd');if(qa)qa.onclick=()=>{const q=dlg.q('#qSel').value;if(!q)return;p.quals.push({q,datum:dlg.q('#qDat').value||today()});save('personal');log('Qualifikation erfasst',p.nachname+': '+q);show()};
   dlg.qa('[data-qdel]').forEach(e=>e.onclick=ev=>{ev.preventDefault();const q=p.quals.splice(+e.dataset.qdel,1)[0];save('personal');log('Qualifikation entfernt',p.nachname+': '+q.q);show()});
   const va=dlg.q('#vAdd');if(va)va.onclick=()=>{const t=dlg.q('#vTx').value.trim();if(!t)return;p.vermerke.push({datum:today(),text:t,von:USER.kennung});save('personal');log('Aktenvermerk',p.nachname);show()};
+  dlg.qa('[data-mdat]').forEach(e=>e.onclick=ev=>{ev.preventDefault();if(!needBL())return;const m=S.massnahmen.find(x=>x.id===e.dataset.mdat);if(!m)return;const F=[{k:'datum',l:'Wirksam ab',t:'date',req:1}];
+   openDlg({title:'Datum berichtigen – '+m.art+' ('+m.az+')',size:'small',body:formHtml(F,{datum:m.datum}),buttons:[{label:'Übernehmen',pri:true,fn:a=>{const v=readForm(a,F);if(!v)return false;const alt=m.datum;m.datum=v.datum;
+    if(m.art==='Beförderung'&&p.befoerdert===alt&&m.nach===p.dg)p.befoerdert=v.datum;
+    if(ABWESEND.concat(['suspendiert','aktiv']).includes(m.nach)&&p.statusAb===alt)p.statusAb=v.datum;
+    save('massnahmen','personal');log('Maßnahmedatum berichtigt',p.nachname+': '+m.art+' '+fmtD(alt)+' → '+fmtD(v.datum));show();render()}},{label:'Abbrechen'}]})});
   dlg.qa('[data-del]').forEach(e=>e.onclick=ev=>{ev.preventDefault();if(!needBL())return;const [typ,key]=e.dataset.del.split('|');
    let txt='',fn=null;
    if(typ==='m'){const m=S.massnahmen.find(x=>x.id===key);if(!m)return;txt=`Personalmaßnahme <b>${esc(m.art)}</b> vom ${fmtD(m.datum)} (${esc(m.az)}) aus der Akte löschen?<br><br>Amt, Dienststelle und Status der Person bleiben unverändert.`;fn=()=>{S.massnahmen=S.massnahmen.filter(x=>x.id!==key);save('massnahmen');log('Personalmaßnahme gelöscht',p.nachname+': '+m.art+' '+m.az)}}
@@ -2326,7 +2337,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.7.2 (Build 26.10.22)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.7.3 (Build 26.10.22)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
