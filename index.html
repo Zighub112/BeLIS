@@ -128,8 +128,8 @@ ul.wv li:last-child{border-bottom:0}
 ul.wv .d{width:74px;flex:none;color:var(--tx2);font-variant-numeric:tabular-nums}
 ul.wv a{color:inherit;cursor:pointer;text-decoration:underline dotted}
 ul.wv li>*{min-width:0}
-ul.wv li>a,ul.wv li>span:not(.d){overflow-wrap:anywhere}
-ul.wv .wvt{flex:1;min-width:0;overflow-wrap:anywhere}
+ul.wv li>a,ul.wv li>span:not(.d){overflow-wrap:break-word}
+ul.wv .wvt{flex:1;min-width:0;overflow-wrap:break-word}
 ul.wv .wvt small{display:block;color:var(--tx3);font-size:11px;margin-left:14px}
 .hint{padding:6px 9px;border:1px solid;margin-bottom:8px}
 .hint.warn{background:var(--warnbg);color:var(--warn)}
@@ -342,7 +342,7 @@ table.kal{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed
     <div class="hm" id="sbMandant">Mandant –</div>
     <div class="f" id="sbMsg">Bereit</div>
     <div id="sbSync">Lokale Datenhaltung</div>
-    <div class="hm">BeLIS 5.7.3 (Build 26.10.22)</div>
+    <div class="hm">BeLIS 5.7.4 (Build 26.10.22)</div>
     <div id="sbClock">–</div>
   </div>
 </div>
@@ -1135,7 +1135,7 @@ V.cockpit={t:'Übersicht',
    ${(()=>{const L=S.todos.filter(x=>!x.erledigt&&betrifftMich(x.zustaendig)).sort((a,b)=>(a.faellig||'9')<(b.faellig||'9')?-1:1);return L.length?`<ul class="wv">${L.slice(0,8).map(x=>`<li><input type="checkbox" data-act="todochk" data-id="${x.id}" style="margin:0"><span class="d" style="${x.faellig&&x.faellig<t?'color:var(--err);font-weight:600':''}">${x.faellig?fmtD(x.faellig):'–'}</span><a data-act="todo" data-id="${x.id}">${esc(x.titel)}</a>${x.prio==='hoch'?'<span class="st err" style="margin-left:auto">hoch</span>':''}</li>`).join('')}</ul>${L.length>8?`<div style="color:var(--tx3)">… und ${L.length-8} weitere</div>`:''}`:'<div style="color:var(--tx3)">Keine offenen Aufgaben.</div>'})()}
   </fieldset>
   <fieldset><legend>Führungskräfte (höherer Dienst)</legend>
-   <ul class="wv">${fk.map(p=>`<li><span style="width:58px;flex:none;font-weight:600">${rolleOf(p)?pdot(p.id):''}${esc(p.dg)}</span><span>${esc(p.nachname)}${p.vorname?', '+esc(p.vorname):''}${p.titel?', '+esc(p.titel):''}${p.id===USER.pid?' <span style="color:var(--tx3)">(Sie)</span>':''}</span><span style="margin-left:auto;color:var(--tx2);text-align:right">${rolleOf(p)==='Behördenleitung'?'Behördenleitung':rolleOf(p)==='Leitung Wachbezirk'?esc(wbOf(p.dienststelle)):esc(p.funktion||p.dienststelle)}${p.status!=='aktiv'?' '+statusBadge(p):''}</span></li>`).join('')||'<li style="color:var(--tx3)">Keine Führungskräfte erfasst.</li>'}${fk.length>8?'':''}</ul>
+   <ul class="wv">${fk.map(p=>`<li><span style="width:64px;flex:none;font-weight:600;white-space:nowrap">${rolleOf(p)?pdot(p.id):''}${esc(p.dg)}</span><span class="wvt"><span>${esc([p.titel,p.vorname,p.nachname].filter(Boolean).join(' '))}${p.id===USER.pid?' <span style="color:var(--tx3)">(Sie)</span>':''}${p.status!=='aktiv'?' '+statusBadge(p):''}</span><small style="margin-left:0">${rolleOf(p)==='Behördenleitung'?'Behördenleitung':rolleOf(p)==='Leitung Wachbezirk'?'Leitung '+esc(wbOf(p.dienststelle)):esc(p.funktion||p.dienststelle)}</small></span></li>`).join('')||'<li style="color:var(--tx3)">Keine Führungskräfte erfasst.</li>'}${fk.length>8?'':''}</ul>
   </fieldset>
   <fieldset><legend>Letzte Personalmaßnahmen</legend>
    ${kuenftig.length?`<div style="color:var(--tx2);font-weight:600;margin-bottom:2px">Vorgemerkt (künftig wirksam)</div><ul class="wv" style="margin-bottom:8px">${kuenftig.map(m=>`<li><span class="d" style="color:var(--warn)">ab ${fmtD(m.datum)}</span><span class="wvt">${mTxt(m)}</span><a style="white-space:nowrap" data-act="akte" data-id="${m.pid}">Akte</a></li>`).join('')}</ul>`:''}${last.length?`<ul class="wv">${last.map(m=>`<li><span class="d">${fmtD(m.datum)}</span><span class="wvt">${mTxt(m)}</span><a style="white-space:nowrap" data-act="akte" data-id="${m.pid}">Akte</a></li>`).join('')}</ul>`:'<div style="color:var(--tx3)">Noch keine Maßnahmen verfügt.</div>'}
@@ -2337,7 +2337,7 @@ function help(){openDlg({title:'Hilfe zu BeLIS',body:`<p style="margin-top:0"><b
  <dl class="kv"><dt>Übersicht</dt><dd>Vorgangslage, Fristen, Führungskräfte, letzte Maßnahmen.</dd><dt>Organisation</dt><dd>Organisationsplan mit allen Abteilungen und Funktionen; vakante Stellen können direkt ausgeschrieben werden.</dd><dt>Anträge</dt><dd>Mitzeichnung zwischen Wachbezirk und Behördenleitung.</dd><dt>Personalmaßnahmen</dt><dd>Einstellung, Beförderung, Versetzung, Status, Entlassung mit Urkunde bzw. Verfügung.</dd><dt>Disziplinarverfahren</dt><dd>Einleitung, Fristen, Abschluss; laufende Verfahren sperren Beförderungen.</dd><dt>Bewerbungen hD</dt><dd>Auswahlverfahren für Ämter des höheren Dienstes bis zur Ernennung.</dd><dt>Schriftgut</dt><dd>Dienstanweisungen, Rundschreiben, Stellenausschreibungen.</dd></dl>
  <p>F6 öffnet eine beliebige Personalakte. Doppelklick öffnet einen Datensatz, Spaltenköpfe sortieren.</p><p>Datenhaltung: Firebase Firestore (Projekt ${esc(FB_CFG.projectId)}), Änderungen anderer Nutzer erscheinen automatisch.</p>`,buttons:[{label:'OK',pri:true}]})}
 function keysHelp(){infoDlg('Tastenbelegung',`<dl class="kv"><dt>F1</dt><dd>Hilfe</dd><dt>F2</dt><dd>Neuen Datensatz anlegen</dd><dt>F3</dt><dd>Suchfeld</dd><dt>F5</dt><dd>Aktualisieren</dd><dt>F6</dt><dd>Personalakte öffnen</dd><dt>F8</dt><dd>Liste als PDF</dd><dt>F9 / F10</dt><dd>Übersicht / Personalmaßnahmen</dd><dt>Alt+1 … 9</dt><dd>Modul wechseln</dd><dt>↑ ↓</dt><dd>Datensatz wählen</dd><dt>Enter</dt><dd>Datensatz öffnen</dd><dt>Entf</dt><dd>Datensatz löschen</dd><dt>Esc</dt><dd>Dialog schließen</dd><dt>Strg+Q</dt><dd>Abmelden</dd></dl>`)}
-function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.7.3 (Build 26.10.22)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
+function about(){infoDlg('Info über BeLIS',`<div style="display:flex;gap:12px"><img src="${IMG_STERN}" alt="" style="width:64px;height:auto;align-self:start"><div><b>Behördenleitungs-Informationssystem</b><br>Version 5.7.4 (Build 26.10.22)<br>Fachverfahren Personal &amp; Dienstbetrieb<br><br>Mandant: ${esc(S.meta.behoerde)}<br>Rollenspielversion für den Dienstbetrieb auf dem Server.<br><br><i>${esc(S.meta.kennzeichnung||'')}</i></div></div>`)}
 
 /* ================= Start ================= */
 /* Firebase-SDK: falls gstatic.com blockiert ist, Ersatzquelle jsDelivr verwenden */
