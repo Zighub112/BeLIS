@@ -514,7 +514,8 @@ function rolleOf(p){if(!p)return null;if(csv(S.meta.rollenBL).includes(p.dg))ret
 const isFK=()=>!!USER&&USER.rolle==='Führungskraft';
 const isLW=()=>!!USER&&USER.rolle==='Leitung Wachbezirk';
 const istKomm=()=>!!USER&&!!kommAktiv(person(USER.pid));
-const isBL=()=>!!USER&&USER.rolle==='Behördenleitung';
+/* Rechte: Die Leitung Wachbezirk hat dieselben Befugnisse wie die Behördenleitung */
+const isBL=()=>!!USER&&(USER.rolle==='Behördenleitung'||USER.rolle==='Leitung Wachbezirk');
 const myWB=()=>USER?USER.wb:'';
 const inScope=pid=>{const p=person(pid);return isBL()||(!isFK()&&!!p&&wbOf(p.dienststelle)===myWB())};
 const antragScope=pid=>{const p=person(pid);return isBL()||(!!p&&wbOf(p.dienststelle)===myWB())};
@@ -627,7 +628,7 @@ function kennungenBereinigen(){if(!isBL())return;let ch=false;
  if(ch){save('personal');log('Anmeldekennungen bereinigt','Namensdoppelungen eindeutig zugeordnet')}}
 function zugangListe(){
  const F=S.personal.filter(p=>rolleOf(p)&&!keinZugang(p)&&p.status!=='ausgeschieden'&&p.status!=='suspendiert'&&!(p.acc&&p.acc.gesperrt));
- return{alle:F.map(kennungMail).sort(),bl:F.filter(p=>rolleOf(p)==='Behördenleitung').map(kennungMail).sort()};
+ return{alle:F.map(kennungMail).sort(),bl:F.filter(p=>['Behördenleitung','Leitung Wachbezirk'].includes(rolleOf(p))).map(kennungMail).sort()};
 }
 function zugangSync(force){
  if(!FB||!FB.auth.currentUser||!USER||!isBL())return Promise.resolve();
@@ -1107,7 +1108,7 @@ function stehzeit(p){return p.befoerdert?daysBetween(p.befoerdert,today()):null}
 const DISZ_ZU=['abgeschlossen','eingestellt'];
 function openDisz(pid){return S.disziplinar.filter(d=>d.pid===pid&&!DISZ_ZU.includes(d.status))}
 function derivedWV(){
- const t=today();const L=[];const sc=pid=>inScope(pid);
+ const t=today();const L=[];const sc=pid=>isBL()||isLW()||inScope(pid);
  S.disziplinar.forEach(d=>{if(d.frist&&!DISZ_ZU.includes(d.status)&&sc(d.pid))L.push({d:d.frist,t:`Frist Disziplinarverfahren ${d.az} (${pname(d.pid)}) – ${d.status}`,go:'disziplinar',id:d.id})});
  scopePersons().forEach(p=>{if((ABWESEND.includes(p.status)||p.status==='suspendiert')&&p.statusBis)L.push({d:p.statusBis,t:`Rückkehr erwartet: ${p.dg} ${p.nachname} (${p.status}) – Status prüfen`,go:'akte',id:p.id})});
  if(isBL())S.bewerbungen.forEach(b=>{if(b.status==='Eingang'&&daysBetween(b.eingang,t)>=7)L.push({d:addDays(b.eingang,7),t:`Bewerbung unbearbeitet: ${b.az} ${b.nachname}, ${b.vorname}`,go:'bewerbungen',id:b.id})});
@@ -1126,13 +1127,13 @@ V.cockpit={t:'Übersicht',
   const n=a=>inY.filter(m=>m.art===a).length;
   const offD=S.disziplinar.filter(d=>ids.has(d.pid)&&!DISZ_ZU.includes(d.status));
   const fristD=offD.filter(d=>d.frist&&daysBetween(t,d.frist)<=7).length;
-  const offA=S.antraege.filter(a=>a.status==='offen'&&(isBL()||a.von===USER.pid)).length;
+  const offA=S.antraege.filter(a=>a.status==='offen'&&(isBL()||isLW()||a.von===USER.pid)).length;
   const susp=P.filter(p=>p.status==='suspendiert');
   const offB=S.bewerbungen.filter(b=>!['Absage','Ernannt'].includes(b.status)).length;
   const wv=derivedWV();const over=wv.filter(w=>w.d<t).length;
   const fk=S.personal.filter(p=>isHD(p.dg)&&p.status!=='ausgeschieden').sort((a,b)=>rankIdx(b.dg)-rankIdx(a.dg)||a.nachname.localeCompare(b.nachname));
   const hin=[];if(isBL()&&offA)hin.push(`${offA} Antrag/Anträge zur Entscheidung.`);if(fristD)hin.push(`${fristD} Disziplinarfrist(en) in den nächsten 7 Tagen.`);
-  const scopeTxt=isBL()?'Gesamtbehörde':USER.wb;
+  const scopeTxt=isBL()||isLW()?'Gesamtbehörde':USER.wb;
   const alleM=S.massnahmen.filter(m=>person(m.pid));
   const last=alleM.filter(m=>m.datum<=t).sort((a,b)=>(a.datum+a.az)<(b.datum+b.az)?1:-1).slice(0,8);
   const kuenftig=alleM.filter(m=>m.datum>t).sort((a,b)=>a.datum<b.datum?-1:1);
@@ -1141,7 +1142,7 @@ V.cockpit={t:'Übersicht',
   return notfallHin+`${over?`<div class="hint err">Es bestehen ${over} überfällige Wiedervorlage(n). ${hin.join(' ')}</div>`:hin.length?`<div class="hint warn">${hin.join(' ')}</div>`:''}
   <div class="cols">
   <fieldset><legend>Vorgangslage – ${esc(scopeTxt)}</legend><dl class="kv">
-   <dt>${isBL()?'Anträge zur Entscheidung':'Eigene offene Anträge'}</dt><dd>${offA?`<a href="#" data-act="goantr" style="font-weight:600;${isBL()?'color:var(--err)':''}">${offA}</a>`:0}</dd>
+   <dt>${isBL()?'Anträge zur Entscheidung':isLW()?'Offene Anträge (Gesamtbehörde)':'Eigene offene Anträge'}</dt><dd>${offA?`<a href="#" data-act="goantr" style="font-weight:600;${isBL()?'color:var(--err)':''}">${offA}</a>`:0}</dd>
    <dt>laufende Disziplinarverfahren</dt><dd>${offD.length}${fristD?` <span style="color:var(--warn)">(${fristD} mit Frist ≤ 7 Tage)</span>`:''}</dd>
    <dt>abwesend (Urlaub, abgemeldet, beurlaubt, krank)</dt><dd>${P.filter(p=>ABWESEND.includes(p.status)).length}</dd>
    <dt>vorläufig des Dienstes enthoben</dt><dd>${susp.length?`<span style="color:var(--err)">${susp.length}</span>`:0}</dd>
@@ -1206,7 +1207,7 @@ const darfAntragLoeschen=()=>isBL()||(!!USER&&USER.rolle==='Leitung Wachbezirk')
 function antragLoeschen(id){const a=S.antraege.find(x=>x.id===id);if(!a)return;
  if(!darfAntragLoeschen()){toast('Anträge können nur von der Behördenleitung und der Leitung Wachbezirk gelöscht werden.',true);return}
  confirmDlg('Antrag löschen',`Antrag <b>${esc(a.az)}</b> (${esc(a.art)} – ${esc(pname(a.pid,1))}, Status: ${esc(a.status)}) endgültig löschen?${a.status==='genehmigt'?'<br><br>Die bereits verfügte Personalmaßnahme bleibt bestehen.':''}`,()=>{S.antraege=S.antraege.filter(x=>x.id!==id);delete SEL.antraege;dlgStack.slice().forEach(d=>d.close());save('antraege');log('Antrag gelöscht',a.az+': '+a.art+' '+pname(a.pid));render();toast('Antrag '+a.az+' gelöscht.')},'Löschen')}
-V.antraege={t:'Anträge',neuLabel:'Antrag stellen',delAll:true,delIf:darfAntragLoeschen,del(id){antragLoeschen(id)},neu(){pickPerson('Antrag stellen',pid=>antragNeu(pid))},count:()=>{const n=S.antraege.filter(a=>a.status==='offen'&&(isBL()||a.von===USER.pid)).length;return n||''},warn:()=>isBL()&&S.antraege.some(a=>a.status==='offen'),editLabel:'Anzeigen',
+V.antraege={t:'Anträge',neuLabel:'Antrag stellen',delAll:true,delIf:darfAntragLoeschen,del(id){antragLoeschen(id)},neu(){pickPerson('Antrag stellen',pid=>antragNeu(pid))},count:()=>{const n=S.antraege.filter(a=>a.status==='offen'&&(isBL()||isLW()||a.von===USER.pid)).length;return n||''},warn:()=>isBL()&&S.antraege.some(a=>a.status==='offen'),editLabel:'Anzeigen',
  render(){const st=fil('st','offen');
   const rows=S.antraege.filter(a=>(isBL()||isLW()||wbOf((person(a.von)||{}).dienststelle)===myWB())&&(st==='alle'||a.status===st));
   if(!SORT.antraege)SORT.antraege={i:1,d:-1};
